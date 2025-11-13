@@ -13,6 +13,9 @@ import numpy as np
 import pretty_midi as pm
 from tqdm import tqdm
 
+from ttm.config import MAX_PIANO_PITCH
+from ttm.utils import log
+
 
 def collect_midi_files(root_dir):
     """Recursively collect all .mid/.midi files under a directory."""
@@ -36,28 +39,28 @@ def midi_hash(path):
                     events.append((msg.type, msg.note, msg.time, msg.velocity, msg.channel))
         return hashlib.sha256(str(events).encode()).hexdigest()
     except Exception as e:
-        print(f"Error reading {path}: {e}")
+        log.error(f"Error reading {path}: {e}")
         return None
 
 
-def find_duplicate_midi(maestro_files, asap_files):
-    print(f"Collected {len(maestro_files)} MAESTRO files")
-    print(f"Collected {len(asap_files)} ASAP files")
+def find_duplicate_midi(ref_midi_files, tgt_midi_files):
+    log.debug(f"Collected {len(ref_midi_files)} ref midi files")
+    log.debug(f"Collected {len(tgt_midi_files)} tgt midi files")
 
-    maestro_hashes = {}
-    print("Hashing MAESTRO files...")
-    for p in tqdm(maestro_files):
+    ref_hashes = {}
+    log.debug("Hashing datset 1 files...")
+    for p in tqdm(ref_midi_files):
         h = midi_hash(p)
         if h:
-            maestro_hashes[h] = p
+            ref_hashes[h] = p
     overlaps = []
-    print("Checking ASAP files...")
-    for p in tqdm(asap_files):
+    log.debug("Checking ASAP files...")
+    for p in tqdm(tgt_midi_files):
         h = midi_hash(p)
-        if h and h in maestro_hashes:
-            overlaps.append((p, maestro_hashes[h]))
+        if h and h in ref_hashes:
+            overlaps.append((p, ref_hashes[h]))
 
-    print(f"\nFound {len(overlaps)} overlapping MIDI performances.")
+    log.info(f"\nFound {len(overlaps)} overlapping MIDI performances.")
     return overlaps
 
 
@@ -84,6 +87,8 @@ def get_note_sequence_from_midi(midi_path):
     Note sequence is in a list of (pitch, onset, duration, velocity) tuples, in np.array.
     """
     midi_data = pm.PrettyMIDI(str(Path(midi_path)))
+    if len(midi_data.instruments) == 0:
+        log.error("Flawed midi:")
     note_sequence = reduce(lambda x, y: x + y, [inst.notes for inst in midi_data.instruments])
     note_sequence = sorted(note_sequence, key=cmp_to_key(compare_note_order))
 
@@ -93,12 +98,47 @@ def get_note_sequence_from_midi(midi_path):
     return note_sequence
 
 
+def midi_to_tap(notes, pad_value=MAX_PIANO_PITCH + 1):
+    """
+    notes: np.ndarray of shape (N, 4) = [pitch, onset, duration, velocity]
+    returns:
+        features: np.ndarray of shape (N, 4)
+        labels: np.ndarray of shape (N,)
+    """
+    pitches, onsets, durations, velocities = notes.T
+    n = len(notes)
+
+    features = np.zeros((n, 4), dtype=float)
+    labels = np.zeros(n, dtype=float)
+
+    # first feature is padding
+    features[0] = [pad_value, onsets[0], 0, 0]
+    labels[0] = pitches[0]  # predict first pitch
+
+    for i in range(1, n):
+        prev_pitch = pitches[i - 1]
+        curr_onset = onsets[i]
+        prev_onset = onsets[i - 1]
+        prev_dur = durations[i - 1]
+        prev_vel = velocities[i - 1]
+
+        delta_t = curr_onset - prev_onset
+        eff_dur = np.log1p(min(delta_t, prev_dur))  # causality constraint
+
+        # Log delta time for more perceptually aware IOI encoding (Weber-Fechner law)
+        features[i] = [prev_pitch, np.log1p(delta_t), eff_dur, prev_vel]
+        labels[i] = pitches[i]
+
+    return features, labels
+
+
 def main():
-    overlaps = find_duplicate_midi(
-        '/Users/kurono/Documents/code/data/acpas/asap',
-        '/Users/kurono/Documents/code/data/maestro-v3.0.0'
-    )
-    print(overlaps)
+    # notes = get_note_sequence_from_midi('/Users/kurono/Documents/code/data/acpas/asap/Bach/Fugue/bwv_846/Shi05M.mid')
+    # taps, labels = midi_to_tap(notes)
+
+    duplicates = find_duplicate_midi(collect_midi_files('/Users/kurono/Documents/code/data/hannds-master'),
+                                     collect_midi_files('/Users/kurono/Documents/code/data/maestro-v3.0.0'))
+    print(duplicates)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,8 @@
+import logging
 import warnings
 from pathlib import Path
+
+LOG_LEVEL = logging.DEBUG
 
 warnings.filterwarnings("ignore", category=UserWarning, module='pkg_resources')
 
