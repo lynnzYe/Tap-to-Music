@@ -10,7 +10,7 @@ from ttm.config import config
 from ttm.data_preparation.dataset import UnconditionalDataset
 
 
-class UCTapDataModule(pl.LightningModule):
+class UCDataModule(pl.LightningModule):  # UnconditionalTapDataModule
     def __init__(self, data_dir, feature='unconditional'):
         super().__init__()
         self.data_dir = data_dir
@@ -18,10 +18,8 @@ class UCTapDataModule(pl.LightningModule):
 
     def _get_dataset(self, split):
         assert split in ['train', 'validation', 'test']
-        if self.feature == 'beat':
-            dataset = UnconditionalDataset(self.data_dir, split, self.feature)
-        else:
-            raise ValueError('Unknown feature: {}'.format(self.feature))
+        assert self.feature == 'unconditional'
+        dataset = UnconditionalDataset(self.data_dir, split, self.feature)
         return dataset
 
     def train_dataloader(self):
@@ -50,8 +48,30 @@ class UCTapDataModule(pl.LightningModule):
         )
         return dataloader
 
+    def test_dataloader(self):
+        dataset = self._get_dataset(split='validation')
+        sampler = torch.utils.data.sampler.RandomSampler(dataset)
+        dataloader = torch.utils.data.dataloader.DataLoader(
+            dataset,
+            batch_size=config[self.feature]['batch_size'],
+            sampler=sampler,
+            num_workers=config[self.feature]['num_workers'],
+            drop_last=True,
+            persistent_workers=True
+        )
+        return dataloader
+
 
 def main():
+    # Check data module
+    data = UCDataModule('/Users/kurono/Desktop/10701 final/tap_the_music/output',
+                        feature='unconditional')
+    tr = data.train_dataloader()
+    for i, batch in enumerate(tr):
+        if torch.max(batch[0][:, :, 0]) > 88:
+            raise Exception('wtf')
+        # print(batch)
+
     print("Hello, world!")
 
 
