@@ -2,6 +2,8 @@ import logging
 import warnings
 from pathlib import Path
 
+import yaml
+
 LOG_LEVEL = logging.DEBUG
 
 warnings.filterwarnings("ignore", category=UserWarning, module='pkg_resources')
@@ -11,3 +13,6 @@ RD_SEED = 52
 
 MIN_PIANO_PITCH = 21
 MAX_PIANO_PITCH = 108
+onset_tolerance = 0.03
+
+config = yaml.safe_load(open(f'{ROOT}/config.yaml'))

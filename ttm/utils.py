@@ -58,13 +58,13 @@ class Log:
     def crit(self, *args): self._log(logging.CRITICAL, *args)
 
 
-log = Log("color_log")
+clog = Log("color_log")
 
 
 def main():
-    log.info('hello', 'world', 1 + 1)
-    log.set_level(LOG_LEVEL)
-    log.debug('this is a debug message')
+    clog.info('hello', 'world', 1 + 1)
+    clog.set_level(LOG_LEVEL)
+    clog.debug('this is a debug message')
 
 
 if __name__ == "__main__":

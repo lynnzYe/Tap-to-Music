@@ -20,7 +20,7 @@ from tqdm import tqdm
 
 from ttm.config import RD_SEED
 from ttm.data_preparation.utils import find_duplicate_midi, get_note_sequence_from_midi, midi_to_tap
-from ttm.utils import log
+from ttm.utils import clog
 
 warnings.filterwarnings("ignore", category=UserWarning, module='pkg_resources')
 
@@ -44,7 +44,7 @@ def parse_any_data(data_dir, source_name, train_val_test_split=(0.8, 0.1, 0.1)):
                 midi_paths.append(os.path.join(root, f))
 
     if not midi_paths:
-        log.warning(f"No MIDI files found in {data_dir}")
+        clog.warning(f"No MIDI files found in {data_dir}")
         return pd.DataFrame(columns=["midi_path", "split", "source"])
 
     # Shuffle for reproducible split
@@ -267,11 +267,11 @@ def integrate_maestro_asap(mstro, asap, train_val_test_split=(0.8, 0.1, 0.1), ch
     combined_df = pd.concat([mstro_sel[unconditional_datacols], asap_sel[unconditional_datacols]], ignore_index=True)
 
     if check_duplicate:
-        log.info("Checking duplicates")
+        clog.info("Checking duplicates")
         overlaps = find_duplicate_midi(combined_df[combined_df['source'] == 'maestro']['midi_path'].tolist(),
                                        combined_df[combined_df['source'] == 'asap']['midi_path'].tolist())
         if len(overlaps) > 0:
-            log.warn("found", len(overlaps), 'overlapped performances in asap and maestro')
+            clog.warn("found", len(overlaps), 'overlapped performances in asap and maestro')
         overlapped_paths = set([f[0] for f in overlaps])
         combined_df = combined_df[~combined_df['midi_path'].isin(overlapped_paths)].reset_index(drop=True)
 
@@ -404,10 +404,10 @@ class FeaturePreparation:
 
     def print_statistics(self):
         # Reference: PM2S github
-        log.info('Printing dataset statistics')
+        clog.info('Printing dataset statistics')
 
         # =========== number of performances ===========
-        log.debug('Get number of performances')
+        clog.debug('Get number of performances')
 
         n_perfms_train = len(self.metadata[self.metadata['split'] == 'train'])
         n_perfms_valid = len(self.metadata[self.metadata['split'] == 'validation'])
@@ -415,14 +415,14 @@ class FeaturePreparation:
         n_perfms = n_perfms_train + n_perfms_valid + n_perfms_test
 
         # ========== duration & number of notes ==========
-        log.debug('Get duration & number of notes')
+        clog.debug('Get duration & number of notes')
 
         flawed_rows_pid = []
 
         def cache_duration_n_notes(row):
             midi_data = pm.PrettyMIDI(row['midi_path'])
             if len(midi_data.instruments) == 0:
-                log.error("Empty midi path", row['midi_path'])
+                clog.error("Empty midi path", row['midi_path'])
                 flawed_rows_pid.append(row['pid'])
             duration = midi_data.get_end_time()
             n_notes = np.sum([len(midi_data.instruments[i].notes) for i in range(len(midi_data.instruments))])
@@ -474,7 +474,7 @@ class FeaturePreparation:
                                                                               n_notes_all / 1000))
 
     def prepare_features(self):
-        log.info("prepare features")
+        clog.info("prepare features")
 
         def prepare_one_midi(row_data):
             features, labels = feature_extractor_map[self.feature](row_data)
@@ -494,7 +494,7 @@ class FeaturePreparation:
         prepare_split('validation')
         prepare_split('test')
 
-        log.info("\x1B[34m[Info]\033[0m saved all feature")
+        clog.info("\x1B[34m[Info]\033[0m saved all feature")
 
 
 def extract_unconditional_feature():

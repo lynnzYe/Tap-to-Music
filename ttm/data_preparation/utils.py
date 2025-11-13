@@ -14,7 +14,7 @@ import pretty_midi as pm
 from tqdm import tqdm
 
 from ttm.config import MAX_PIANO_PITCH
-from ttm.utils import log
+from ttm.utils import clog
 
 
 def collect_midi_files(root_dir):
@@ -39,28 +39,28 @@ def midi_hash(path):
                     events.append((msg.type, msg.note, msg.time, msg.velocity, msg.channel))
         return hashlib.sha256(str(events).encode()).hexdigest()
     except Exception as e:
-        log.error(f"Error reading {path}: {e}")
+        clog.error(f"Error reading {path}: {e}")
         return None
 
 
 def find_duplicate_midi(ref_midi_files, tgt_midi_files):
-    log.debug(f"Collected {len(ref_midi_files)} ref midi files")
-    log.debug(f"Collected {len(tgt_midi_files)} tgt midi files")
+    clog.debug(f"Collected {len(ref_midi_files)} ref midi files")
+    clog.debug(f"Collected {len(tgt_midi_files)} tgt midi files")
 
     ref_hashes = {}
-    log.debug("Hashing datset 1 files...")
+    clog.debug("Hashing datset 1 files...")
     for p in tqdm(ref_midi_files):
         h = midi_hash(p)
         if h:
             ref_hashes[h] = p
     overlaps = []
-    log.debug("Checking ASAP files...")
+    clog.debug("Checking ASAP files...")
     for p in tqdm(tgt_midi_files):
         h = midi_hash(p)
         if h and h in ref_hashes:
             overlaps.append((p, ref_hashes[h]))
 
-    log.info(f"\nFound {len(overlaps)} overlapping MIDI performances.")
+    clog.info(f"\nFound {len(overlaps)} overlapping MIDI performances.")
     return overlaps
 
 
@@ -88,7 +88,7 @@ def get_note_sequence_from_midi(midi_path):
     """
     midi_data = pm.PrettyMIDI(str(Path(midi_path)))
     if len(midi_data.instruments) == 0:
-        log.error("Flawed midi:")
+        clog.error("Flawed midi:")
     note_sequence = reduce(lambda x, y: x + y, [inst.notes for inst in midi_data.instruments])
     note_sequence = sorted(note_sequence, key=cmp_to_key(compare_note_order))
 
