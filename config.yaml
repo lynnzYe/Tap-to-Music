@@ -1,2 +1,7 @@
+# Training configs grouped by feature (unconditional, chord condition, score conditioned etc.)
+
 unconditional:
-  max_length
+  batch_size: 64
+  num_workers: 2
+
+  max_length: 128

@@ -8,9 +8,9 @@ import random
 import numpy as np
 
 from ttm.config import onset_tolerance, RD_SEED, MIN_PIANO_PITCH, MAX_PIANO_PITCH
-from ttm.utils import clog
 
 random.seed(RD_SEED)
+np.random.seed(RD_SEED)
 
 
 class BaseDataAugmentation:
@@ -23,26 +23,20 @@ class BaseDataAugmentation:
 
 class UnconditionalDataAugmentation(BaseDataAugmentation):
     def __init__(self, tempo_change_prob=1.0, tempo_change_range=(0.8, 1.2), pitch_shift_prob=1.0,
-                 pitch_shift_range=(-12, 12), extra_note_prob=0.5, missing_note_prob=0.5, perturb_onset_prob=0.3):
+                 pitch_shift_range=(-12, 12), missing_note_prob=0.2, perturb_onset_prob=0.3):
         super().__init__()
-        if extra_note_prob + missing_note_prob > 1.:
-            extra_note_prob, missing_note_prob = extra_note_prob / (extra_note_prob + missing_note_prob), \
-                                                 missing_note_prob / (extra_note_prob + missing_note_prob)
-            clog.info('Reset extra_note_prob and missing_note_prob to', extra_note_prob, missing_note_prob)
-
         self.tempo_change_prob = tempo_change_prob
         self.tempo_change_range = tempo_change_range
         self.pitch_shift_prob = pitch_shift_prob
         self.pitch_shift_range = pitch_shift_range
-        self.extra_note_prob = extra_note_prob
         self.missing_note_prob = missing_note_prob
         self.perturb_onset_prob = perturb_onset_prob
 
     def __call__(self, note_sequence, annotations):
         note_sequence, annotations = self.tempo_change(note_sequence, annotations)
         note_sequence, annotations = self.pitch_shift(note_sequence, annotations)
-        note_sequence, annotations = self.missing_note(note_sequence, annotations)
-        note_sequence, annotations = self.perturb_onset(note_sequence, annotations)
+        # note_sequence, annotations = self.missing_note(note_sequence, annotations)
+        # note_sequence, annotations = self.perturb_onset(note_sequence, annotations)
         return note_sequence, annotations
 
     def tempo_change(self, note_sequence, annotations):
@@ -57,9 +51,18 @@ class UnconditionalDataAugmentation(BaseDataAugmentation):
     def pitch_shift(self, note_sequence, annotations):
         if random.random() > self.pitch_shift_prob:
             return note_sequence, annotations
-        assert note_sequence[0:0] == MAX_PIANO_PITCH
+
+        assert int(note_sequence[0, 0]) == MAX_PIANO_PITCH + 1, \
+            'see comment below this assertion'  # always a pad input tuple at the start of input seq.
+        """
+        During data preparation, I padded one input before all note sequences so the model can start from nothing.
+        I can also skip this step and leave it to Dataset.__getitem__, 
+        but then the first ground truth label will be lost forever. 
+            see midi_to_tap:
+        """
+
         pitches = note_sequence[1:, 0]  # skip first pad pitch
-        annot_pitches = annotations[:, 0]
+        annot_pitches = annotations
         all_pitches = np.concatenate([pitches, annot_pitches], axis=0)
 
         max_down = MIN_PIANO_PITCH - all_pitches.min().item()  # negative number
@@ -69,46 +72,83 @@ class UnconditionalDataAugmentation(BaseDataAugmentation):
         lower = max(self.pitch_shift_range[0], max_down)
         upper = min(self.pitch_shift_range[1], max_up)
         shift = np.random.randint(lower, upper + 1)
-        note_sequence[:, 0] += shift
-        annotations[:, 0] += shift
+        note_sequence[1:, 0] += shift
+        annotations += shift
 
-        assert np.min(note_sequence[:, 0]) >= MIN_PIANO_PITCH and np.max(note_sequence[:, 0]) <= MAX_PIANO_PITCH
-        assert np.min(annotations[:, 0]) >= MIN_PIANO_PITCH and np.max(annotations[:, 0]) <= MAX_PIANO_PITCH
+        assert np.min(note_sequence[1:, 0]) >= MIN_PIANO_PITCH and np.max(note_sequence[1:, 0]) <= MAX_PIANO_PITCH
+        assert np.min(annotations) >= MIN_PIANO_PITCH and np.max(annotations) <= MAX_PIANO_PITCH
         return note_sequence, annotations
 
     def missing_note(self, note_sequence, annotations):
-        extra_or_missing = random.random()
-        if extra_or_missing < 1. - self.missing_note_prob:
+        """
+        Need to consider note importance - randomly dropping notes could sound terrible
+        :param note_sequence:
+        :param annotations:
+        :return:
+        """
+        raise Exception("some problems see comment")
+        missing = random.random()
+        if missing < 1. - self.missing_note_prob:
             return note_sequence, annotations
 
-        # find successing concurrent notes
-        candidates = np.diff(note_sequence[:, 1]) < onset_tolerance
+        # Ignore first pitch (pad token)
+        actual_notes = note_sequence[1:]
+        actual_annots = annotations[1:]
+
+        # Find concurrent notes (small onset gaps)
+        candidates = np.diff(actual_notes[:, 1]) < onset_tolerance
+
+        if not np.any(candidates):
+            return note_sequence, annotations
 
         # randomly select a ratio of candidates to be removed
         ratio = random.random()
-        candidates_probs = candidates * np.random.random(len(candidates))
-        remaining = np.concatenate([np.array([True]), candidates_probs < (1 - ratio)])
+        candidates_probs = np.random.random(len(candidates))
+        keep_mask = np.concatenate([[True], candidates_probs < (1 - ratio)])
 
-        # remove selected candidates
-        note_sequence = note_sequence[remaining]
-        annotations = annotations[remaining]
+        # Apply mask
+        actual_notes = actual_notes[keep_mask]
+        actual_annots = actual_annots[keep_mask]
+
+        # Reattach the first (pad) note
+        note_sequence = np.concatenate([note_sequence[:1], actual_notes], axis=0)
+        annotations = np.concatenate([annotations[:1], actual_annots], axis=0)
 
         return note_sequence, annotations
 
     def perturb_onset(self, note_sequence, annotations, epsilon=onset_tolerance / 8.0):
-        # Perturb absolute time randomly with epsilon values
-        onsets = note_sequence[:, 1].copy()
+        """
+        Need to first revert back to onset domain, then log1p. can introduce noise
+        :param note_sequence:
+        :param annotations:
+        :param epsilon:
+        :return:
+        """
+        raise Exception("some problems see comment")
+        # Separate first (pad) row and the rest
+        pad_row = note_sequence[:1]
+        pad_annot = annotations[:1]
+
+        notes = note_sequence[1:].copy()
+        annots = annotations[1:].copy()
+
+        onsets = notes[:, 1]
         N = len(onsets)
-        # Decide which notes to perturb
+
+        # Which notes to perturb
         mask = np.random.rand(N) < self.perturb_onset_prob
         perturb = np.random.uniform(-epsilon, epsilon, size=N)
-
-        # Apply perturbation only to selected notes
         onsets[mask] += perturb[mask]
+
+        # Re-sort within the non-pad region
         sorted_indices = np.argsort(onsets, kind='stable')
-        note_sequence = note_sequence[sorted_indices]
-        annotations = annotations[sorted_indices]
-        note_sequence[:, 1] = onsets[sorted_indices]
+        notes = notes[sorted_indices]
+        annots = annots[sorted_indices]
+        notes[:, 1] = onsets[sorted_indices]
+
+        # Reattach the pad
+        note_sequence = np.concatenate([pad_row, notes], axis=0)
+        annotations = np.concatenate([pad_annot, annots], axis=0)
 
         return note_sequence, annotations
 

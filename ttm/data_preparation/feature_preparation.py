@@ -504,7 +504,7 @@ def extract_unconditional_feature():
     datasets = {
         'maestro': '/Users/kurono/Documents/code/data/maestro-v3.0.0',
         'asap': '/Users/kurono/Documents/code/data/acpas/asap',
-        'pop909': '/Users/kurono/Documents/code/data/POP909-Dataset-master',
+        # 'pop909': '/Users/kurono/Documents/code/data/POP909-Dataset-master', # require further processing
         'hannds': '/Users/kurono/Documents/code/data/hannds-master'
     }
 
@@ -516,7 +516,7 @@ def extract_unconditional_feature():
     fp.load_meta()
     fp.print_statistics()
     # would be good to stats by source
-    # fp.prepare_features()
+    fp.prepare_features()
 
     print('hi')
 

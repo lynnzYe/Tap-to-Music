@@ -102,7 +102,7 @@ def midi_to_tap(notes, pad_value=MAX_PIANO_PITCH + 1):
     """
     notes: np.ndarray of shape (N, 4) = [pitch, onset, duration, velocity]
     returns:
-        features: np.ndarray of shape (N, 4)
+        features: np.ndarray of shape (N, 4), pitch. log1p delta time, log1p duration, velocity
         labels: np.ndarray of shape (N,)
     """
     pitches, onsets, durations, velocities = notes.T
@@ -113,7 +113,13 @@ def midi_to_tap(notes, pad_value=MAX_PIANO_PITCH + 1):
 
     # first feature is padding
     features[0] = [pad_value, onsets[0], 0, 0]
-    labels[0] = pitches[0]  # predict first pitch
+    labels[0] = pitches[0]  # predict first pitch (don't learn to predict PAD, PAD for each tap...)
+
+    """
+    In theory we can leave the padding step to dataset.__getitem__ during training (less complexity)
+    However: label is always paired with the previous pitch, dt. At t=0, we don't have that.
+     - which means we won't have the ground truth for the first timestep's label, if we skip this pad step
+    """
 
     for i in range(1, n):
         prev_pitch = pitches[i - 1]
