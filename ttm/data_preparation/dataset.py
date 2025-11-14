@@ -8,6 +8,7 @@ import pickle
 import random
 
 import numpy as np
+import torch
 from torch.utils.data.dataset import Dataset
 
 from ttm.config import MAX_PIANO_PITCH, RD_SEED, MIN_PIANO_PITCH, config
@@ -49,7 +50,7 @@ class BaseDataset(Dataset):
         annotation = smpl[1][start_idx: end_idx]
 
         # Pad sos
-        note_sequence = np.concatenate([np.array([[88, 0, 0, 0]]), note_sequence], axis=0)
+        note_sequence = np.concatenate([np.array([[MAX_PIANO_PITCH + 1, 0, 0, 0]]), note_sequence], axis=0)
         annotation = np.concatenate([np.array([smpl[0][start_idx][0]]), annotation], axis=0)
         if self.split != 'test':
             note_sequence = note_sequence[:self.max_length]
@@ -71,6 +72,7 @@ class UnconditionalDataset(BaseDataset):
 
         # convert note seq to 88 pitch indices
         noteseq[:, 0] -= MIN_PIANO_PITCH
+        labels -= MIN_PIANO_PITCH
 
         # Pad if train/val and len < max_length
         if self.split != 'test' and len(noteseq) < self.max_length:
@@ -83,7 +85,7 @@ class UnconditionalDataset(BaseDataset):
             label_pad = np.full(pad_len, 88)  # pad label as well
             labels = np.concatenate([labels, label_pad])
 
-        return noteseq, labels
+        return torch.tensor(noteseq), torch.tensor(labels)
 
 
 def main():

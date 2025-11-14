@@ -10,7 +10,8 @@ from ttm.config import config
 from ttm.data_preparation.dataset import UnconditionalDataset
 
 
-class UCDataModule(pl.LightningModule):  # UnconditionalTapDataModule
+# UnconditionalTapDataModule
+class UCDataModule(pl.LightningDataModule):
     def __init__(self, data_dir, feature='unconditional'):
         super().__init__()
         self.data_dir = data_dir
