@@ -96,5 +96,5 @@ def debug_main():
 
 
 if __name__ == "__main__":
-    # main()
-    debug_main()
+    main()
+    # debug_main()
