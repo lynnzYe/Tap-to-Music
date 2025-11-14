@@ -5,7 +5,8 @@ Brief:
 """
 import logging
 import sys
-
+import mido
+import numpy as np
 from ttm.config import LOG_LEVEL
 
 
@@ -59,6 +60,40 @@ class Log:
 
 
 clog = Log("color_log")
+
+
+def note_seq_to_midi(note_array, ticks_per_beat=480, tempo=500000):
+    note_array = np.array(note_array, dtype=float)
+    mid = mido.MidiFile(ticks_per_beat=ticks_per_beat)
+    track = mido.MidiTrack()
+    mid.tracks.append(track)
+
+    # Helper: convert seconds → MIDI ticks
+    def sec_to_ticks(seconds):
+        beats = (seconds * 1e6) / tempo
+        return int(round(beats * ticks_per_beat))
+
+    # Sort by onset time
+    note_array = note_array[note_array[:, 1].argsort()]
+
+    # Build events
+    events = []
+    for pitch, onset, duration, velocity in note_array:
+        start_tick = sec_to_ticks(onset)
+        end_tick = sec_to_ticks(onset + duration)
+        events.append((start_tick, 'note_on', int(pitch), int(velocity)))
+        events.append((end_tick, 'note_off', int(pitch), 0))
+
+    # Sort events by tick
+    events.sort(key=lambda e: e[0])
+
+    # Write events with delta times
+    last_tick = 0
+    for tick, event_type, pitch, velocity in events:
+        delta = tick - last_tick
+        track.append(mido.Message(event_type, note=pitch, velocity=velocity, time=delta))
+        last_tick = tick
+    return mid
 
 
 def main():

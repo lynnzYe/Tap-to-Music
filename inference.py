@@ -1,0 +1,112 @@
+"""
+Author: Lynn Ye
+Created on: 2025/11/14
+Brief: 
+"""
+import argparse
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+from tqdm import tqdm
+
+from ttm.config import model_config, MIN_PIANO_PITCH
+from ttm.data_preparation.utils import midi_to_tap, get_note_sequence_from_midi
+from ttm.model.uc_model import UCTapLSTM
+from ttm.module.uc_module import parse_model_config
+from ttm.utils import note_seq_to_midi, clog
+
+
+def infer_taps(midi_path, model, device, temperature=1.0):
+    ns = get_note_sequence_from_midi(midi_path)
+    taps, _ = midi_to_tap(ns)
+    taps[0, 0] = 88
+    taps = torch.tensor(taps, device=device)
+    prev_pitch = -1
+    (h, c) = None, None
+
+    predicted_pitches = []
+    for i in tqdm(range(len(ns))):
+        if prev_pitch > 0:
+            taps[i, 0] = prev_pitch
+        pitch_logits, (h, c) = model(taps[i, ...].unsqueeze(0), None if h is None else (h, c))
+        pitch_prob = F.softmax(pitch_logits / temperature, dim=-1)
+
+        # Choose pitch with temperature
+        pitch = torch.multinomial(pitch_prob.squeeze(), num_samples=1)
+        prev_pitch = pitch.item()
+        predicted_pitches.append(prev_pitch)
+    ns[:, 0] = np.array(predicted_pitches) + MIN_PIANO_PITCH
+
+    mid = note_seq_to_midi(ns[1:, :])
+    return mid
+
+
+def get_state_dict(args):
+    checkpoint = torch.load(args.model_state_dict_path, map_location=torch.device(args.device))
+    if "state_dict" in checkpoint:
+        state_dict = checkpoint["state_dict"]
+    else:
+        state_dict = checkpoint
+
+    from collections import OrderedDict
+    new_state_dict = OrderedDict()
+    for k, v in state_dict.items():
+        new_key = k.replace("model.", "")  # adjust prefix as needed
+        new_state_dict[new_key] = v
+    return new_state_dict
+
+
+def load_model(args):
+    if args.feature == 'unconditional':
+        params = parse_model_config(model_config[args.feature], UCTapLSTM)
+        model = UCTapLSTM(**params)
+    else:
+        raise ValueError("feature not yet supported")
+    model.load_state_dict(get_state_dict(args))
+    model = model.to(args.device)
+    model.eval()
+    return model
+
+
+def parse_args(required=True):
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--feature', type=str, required=required)
+    parser.add_argument('--model_state_dict_path', type=str, required=required)
+    parser.add_argument('--midi_path', type=str, required=required,
+                        help='input midi path. onsets, velocities and durations are used to hint the model')
+    parser.add_argument('--output_dir', type=str, required=required, help='dir to save synthesized MIDI')
+    parser.add_argument('--device', type=str, default='cpu')
+    parser.add_argument('--temperature', type=float, default=1.0, help='larger = more random')
+    parser.add_argument('--midi_name', type=str, default='', help='name of the MIDI file to be saved')
+    args = parser.parse_args()
+
+    return args
+
+
+def syn_taps(args):
+    model = load_model(args)
+    mid = infer_taps(args.midi_path, model, device=args.device, temperature=args.temperature)
+    path = f'{args.output_dir}/syn.mid'
+    mid.save(path)
+    clog.info("synthesized MIDI saved at", path)
+
+
+def main():
+    args = parse_args()
+    syn_taps(args)
+
+
+def debug_main():
+    args = parse_args(required=False)
+    args.midi_path = '/Users/kurono/Documents/code/data/maestro-v3.0.0/2008/MIDI-Unprocessed_09_R3_2008_01-07_ORIG_MID--AUDIO_09_R3_2008_wav--1.midi'
+    args.model_state_dict_path = '/Users/kurono/Desktop/10701 final/tap2music/output/ckpt/last.ckpt'
+    args.feature = 'unconditional'
+    args.temperature = 1.1
+    args.output_dir = '/Users/kurono/Desktop/10701 final/tap2music/output/results'
+    syn_taps(args)
+
+
+if __name__ == "__main__":
+    # main()
+    debug_main()

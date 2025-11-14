@@ -35,7 +35,7 @@ def train(args, use_wandb=True, resume_wandb_id=None, resume_ckpt=None):
     name = '' if args.name == '' else '-' + args.name
     wandb_logger = WandbLogger(
         project='tap_music',
-        name=f'{feature_shorthand_map.get(args.feature, args.feature)}{args.name}',
+        name=f'{feature_shorthand_map.get(args.feature, args.featuref)}{args.name}',
         save_dir=args.train_dir,
         id=resume_wandb_id,
         resume='allow'
@@ -48,7 +48,7 @@ def train(args, use_wandb=True, resume_wandb_id=None, resume_ckpt=None):
         log_every_n_steps=50,
         reload_dataloaders_every_n_epochs=True,
         check_val_every_n_epoch=args.eval_n_epoch,
-        callbacks=configure_callbacks(save_dir=args.train_dir, prefix=args.feature, monitor='ppl'),
+        callbacks=configure_callbacks(save_dir=args.train_dir, prefix=args.feature, monitor='val_top5_acc'),
         accelerator=args.device
         # gpus=training_configs[args.feature]['gpus'],
     )
