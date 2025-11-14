@@ -16,6 +16,10 @@ from ttm.module.uc_module import configure_callbacks, UCModule
 pl.seed_everything(config['seed'])
 warnings.filterwarnings('ignore')
 
+feature_shorthand_map = {
+    'unconditional': 'uc'
+}
+
 
 def train(args, use_wandb=True, resume_wandb_id=None, resume_ckpt=None):
     # Data
@@ -28,9 +32,10 @@ def train(args, use_wandb=True, resume_wandb_id=None, resume_ckpt=None):
         raise ValueError('Invalid feature type.')
 
     # Logger
+    name = '' if args.name == '' else '-' + args.name
     wandb_logger = WandbLogger(
         project='tap_music',
-        name=f'{args.feature}-{args.name}',
+        name=f'{feature_shorthand_map.get(args.feature, args.feature)}{args.name}',
         save_dir=args.train_dir,
         id=resume_wandb_id,
         resume='allow'
