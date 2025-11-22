@@ -153,6 +153,89 @@ class UnconditionalDataAugmentation(BaseDataAugmentation):
         return note_sequence, annotations
 
 
+class ChordDataAugmentation(BaseDataAugmentation):
+    """
+    Data augmentation for chord-conditioned data.
+
+    - [prev_pitch, log_dt, log_eff_dur, prev_vel, chord_id]
+
+    - Tempo change: same as unconditional.
+    - Pitch shift: same as unconditional, also transpose chord_id.
+
+    Chord ID semantics are the same as in ChordFeatureExtractor
+    """
+    def __init__(self, tempo_change_prob=1.0, tempo_change_range=(0.8, 1.2),
+                 pitch_shift_prob=1.0, pitch_shift_range=(-12, 12)):
+        super().__init__()
+        self.tempo_change_prob = tempo_change_prob
+        self.tempo_change_range = tempo_change_range
+        self.pitch_shift_prob = pitch_shift_prob
+        self.pitch_shift_range = pitch_shift_range
+
+        # chord ID layout (must match ChordFeatureExtractor)
+        self.NUM_ROOTS = 12
+        self.NUM_QUALITIES = 9
+        self.N_ID = self.NUM_ROOTS * self.NUM_QUALITIES  # 108
+
+    def __call__(self, note_sequence, annotations):
+        note_sequence, annotations = self.tempo_change(note_sequence, annotations)
+        note_sequence, annotations = self.pitch_shift(note_sequence, annotations)
+        return note_sequence, annotations
+
+    def tempo_change(self, note_sequence, annotations):
+        if random.random() > self.tempo_change_prob:
+            return note_sequence, annotations
+        tempo_change_ratio = random.uniform(*self.tempo_change_range)
+        
+        note_sequence[:, 1:3] *= 1 / tempo_change_ratio
+        return note_sequence, annotations
+
+    def _transpose_chord_id(self, chord_id: int, shift: int) -> int:
+        """
+        chord_id = qual_id * 12 + root_pc → transpose root_pc, keep quality.
+        """
+        if chord_id == self.N_ID:
+            return self.N_ID
+        qual_id, root_pc = divmod(chord_id, self.NUM_ROOTS)
+        root_pc = (root_pc + shift) % self.NUM_ROOTS
+        return qual_id * self.NUM_ROOTS + root_pc
+
+    def pitch_shift(self, note_sequence, annotations):
+        if random.random() > self.pitch_shift_prob:
+            return note_sequence, annotations
+
+        assert int(note_sequence[0, 0]) == MAX_PIANO_PITCH + 1, \
+            'expected a pad input tuple at the start of input seq.'
+
+        pitches = note_sequence[1:, 0] 
+        annot_pitches = annotations
+        all_pitches = np.concatenate([pitches, annot_pitches], axis=0)
+
+        max_down = MIN_PIANO_PITCH - all_pitches.min().item()  # negative number
+        max_up = MAX_PIANO_PITCH - all_pitches.max().item()    # positive number
+
+        lower = max(self.pitch_shift_range[0], max_down)
+        upper = min(self.pitch_shift_range[1], max_up)
+        if lower > upper:
+            return note_sequence, annotations
+
+        shift = np.random.randint(lower, upper + 1)
+
+        note_sequence[1:, 0] += shift
+        annotations += shift
+
+        assert np.min(note_sequence[1:, 0]) >= MIN_PIANO_PITCH and np.max(note_sequence[1:, 0]) <= MAX_PIANO_PITCH
+        assert np.min(annotations) >= MIN_PIANO_PITCH and np.max(annotations) <= MAX_PIANO_PITCH
+
+        if note_sequence.shape[1] > 4:
+            chord_ids = note_sequence[:, 4].astype(int)
+            for i in range(len(chord_ids)):
+                chord_ids[i] = self._transpose_chord_id(int(chord_ids[i]), shift)
+            note_sequence[:, 4] = chord_ids.astype(note_sequence.dtype)
+
+        return note_sequence, annotations
+
+
 def main():
     print("Hello, world!")
 

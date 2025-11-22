@@ -12,7 +12,7 @@ import torch
 from torch.utils.data.dataset import Dataset
 
 from ttm.config import MAX_PIANO_PITCH, RD_SEED, MIN_PIANO_PITCH, config
-from ttm.data_preparation.data_augmentation import BaseDataAugmentation, UnconditionalDataAugmentation
+from ttm.data_preparation.data_augmentation import BaseDataAugmentation, UnconditionalDataAugmentation, ChordDataAugmentation
 
 random.seed(RD_SEED)
 
@@ -49,9 +49,18 @@ class BaseDataset(Dataset):
         note_sequence = smpl[0][start_idx:end_idx]
         annotation = smpl[1][start_idx: end_idx]
 
+        n_feats = note_sequence.shape[1]
+        pad_row = np.zeros((1, n_feats), dtype=note_sequence.dtype)
+        pad_row[0, 0] = MAX_PIANO_PITCH + 1
+
+        if n_feats > 4:
+            # chord feature, give the pad the same chord as the first event
+            pad_row[0, 4] = note_sequence[0, 4]
+
         # Pad sos
-        note_sequence = np.concatenate([np.array([[MAX_PIANO_PITCH + 1, 0, 0, 0]]), note_sequence], axis=0)
+        note_sequence = np.concatenate([pad_row, note_sequence], axis=0)
         annotation = np.concatenate([np.array([smpl[0][start_idx][0]]), annotation], axis=0)
+        
         if self.split != 'test':
             note_sequence = note_sequence[:self.max_length]
             annotation = annotation[:self.max_length]
@@ -69,7 +78,6 @@ class UnconditionalDataset(BaseDataset):
 
     def __getitem__(self, item):
         noteseq, labels = self._get_data(item)
-
         # convert note seq to 88 pitch indices
         noteseq[:, 0] -= MIN_PIANO_PITCH
         labels -= MIN_PIANO_PITCH
@@ -87,17 +95,45 @@ class UnconditionalDataset(BaseDataset):
 
         return torch.tensor(noteseq), torch.tensor(labels)
 
+class ChordDataset(BaseDataset):
+    def __init__(self, feature_folder, split, feature_type='chord'):
+
+        super().__init__(feature_folder, split, feature_type)
+        self.data_aug = ChordDataAugmentation()
+
+    def __getitem__(self, item):
+        noteseq, labels = self._get_data(item)  
+
+        noteseq[:, 0] -= MIN_PIANO_PITCH
+        labels = labels - MIN_PIANO_PITCH
+
+        if self.split != 'test' and len(noteseq) < self.max_length:
+            pad_len = self.max_length - len(noteseq)
+            D = noteseq.shape[1]
+
+            pad_row = np.zeros((1, D), dtype=noteseq.dtype)
+            pad_row[0, 0] = 88
+
+            if D > 4:
+                pad_row[0, 4] = noteseq[0, 4]
+
+            pad_block = np.repeat(pad_row, pad_len, axis=0)
+            noteseq = np.concatenate([noteseq, pad_block], axis=0)
+
+            label_pad = np.full(pad_len, 88)
+            labels = np.concatenate([labels, label_pad])
+
+        return torch.tensor(noteseq), torch.tensor(labels)
+
 
 def main():
-    data = UnconditionalDataset(
-        '/Users/kurono/Desktop/10701 final/tap_the_music/output',
-        'train',
-        feature_type='unconditional'
+    data = ChordDataset(
+        '/Users/000flms/10701-IML/Tap-to-Music/data/chord',
+        'train'
     )
-    for i in range(len(data)):
-        item = data.__getitem__(0)
-
-    print("Hello, world!")
+    for i in range(1):
+        item = data.__getitem__(i)
+        print(item, item[0].shape, item[1].shape)
 
 
 if __name__ == "__main__":
