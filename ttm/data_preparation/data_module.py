@@ -6,7 +6,7 @@ Brief:
 import pytorch_lightning as pl
 import torch
 
-from ttm.config import config
+from ttm.config import config, DATA_DIR, FEATURE_TYPE
 from ttm.data_preparation.dataset import UnconditionalDataset
 
 
@@ -65,8 +65,7 @@ class UCDataModule(pl.LightningDataModule):
 
 def main():
     # Check data module
-    data = UCDataModule('/Users/kurono/Desktop/10701 final/tap_the_music/output',
-                        feature='unconditional')
+    data = UCDataModule(DATA_DIR, feature=FEATURE_TYPE)
     tr = data.train_dataloader()
     for i, batch in enumerate(tr):
         if torch.max(batch[0][:, :, 0]) > 88:

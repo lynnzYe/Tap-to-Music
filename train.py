@@ -9,7 +9,7 @@ import warnings
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger, CSVLogger
 
-from ttm.config import config, model_config
+from ttm.config import config, model_config, DEBUG_DIR, DATA_DIR, FEATURE_TYPE
 from ttm.data_preparation.data_module import UCDataModule
 from ttm.module.uc_module import configure_callbacks, UCModule
 
@@ -86,9 +86,9 @@ def debug_main():
     args = parser.parse_args()
 
     # TODO Maybe use dotenv for convenient debug
-    args.feature = 'unconditional'
-    args.train_dir = '/Users/kurono/Desktop/10701 final/tap_the_music/output/debug'
-    args.data_dir = '/Users/kurono/Desktop/10701 final/tap_the_music/output'
+    args.feature = FEATURE_TYPE
+    args.train_dir = DEBUG_DIR
+    args.data_dir = DATA_DIR
     args.name = 'debug'
     args.device = 'cpu'
 

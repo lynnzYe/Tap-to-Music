@@ -18,7 +18,7 @@ import pandas as pd
 import pretty_midi as pm
 from tqdm import tqdm
 
-from ttm.config import RD_SEED
+from ttm.config import RD_SEED, OUTPUT_DIR, FEATURE_TYPE
 from ttm.data_preparation.utils import find_duplicate_midi, get_note_sequence_from_midi, midi_to_tap
 from ttm.utils import clog
 
@@ -504,12 +504,12 @@ def extract_unconditional_feature():
     datasets = {
         'maestro': '/Users/kurono/Documents/code/data/maestro-v3.0.0',
         'asap': '/Users/kurono/Documents/code/data/acpas/asap',
-        'pop909': '/Users/kurono/Documents/code/data/POP909-Dataset-master', # require further processing
+        'pop909': '/Users/kurono/Documents/code/data/POP909-Dataset-master',  # require further processing
         'hannds': '/Users/kurono/Documents/code/data/hannds-master'
     }
 
-    fp = FeaturePreparation(feature='unconditional',
-                            save_dir='/Users/kurono/Desktop/10701 final/tap`_the_music/output',
+    fp = FeaturePreparation(feature=FEATURE_TYPE,
+                            save_dir=OUTPUT_DIR,
                             data_dir_dict=datasets,
                             check_duplicate=True)
     # fp.extract_meta()
