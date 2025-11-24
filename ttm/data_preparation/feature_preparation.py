@@ -370,19 +370,50 @@ class UnconditionalFeatureExtractor(BaseFeatureExtractor):
         return midi_to_tap(note_sequence)
 
 
+class RangeData(BaseFeatureExtractor):
+    """Augment the default 4-dim features with a per-piece range condition."""
+
+    def __init__(self, range_boundaries=(60, 72)):
+        super().__init__()
+        self.range_boundaries = range_boundaries
+
+    def _compute_range_label(self, labels: np.ndarray) -> int:
+        """Return a coarse range class id based on max pitch and configured boundaries."""
+        valid = labels[labels > 0]
+        if len(valid) == 0:
+            return 0
+        pmax = int(valid.max())
+        low, mid = self.range_boundaries
+        if pmax < low:
+            return 0
+        if pmax < mid:
+            return 1
+        return 2
+
+    def __call__(self, row_data):
+        features, labels = UnconditionalFeatureExtractor()(row_data)
+        range_label = self._compute_range_label(labels)
+        # Append a constant range column so each timestep conditions on range.
+        range_col = np.full((features.shape[0], 1), range_label, dtype=features.dtype)
+        features = np.concatenate([features, range_col], axis=1)
+        return features, labels, range_label
+
+
 data_class_map = {
     'unconditional': UnconditionalMIDIData,
-    'chord': ChordMIDIData
+    'chord': ChordMIDIData,
+    'range': RangeData,  # reuse unconditional metadata collection
 }
 
 feature_extractor_map = {
-    'unconditional': UnconditionalFeatureExtractor()
+    'unconditional': UnconditionalFeatureExtractor(),
+    'range': RangeData(),
 }
 
 
 class FeaturePreparation:
     def __init__(self, feature, save_dir, data_dir_dict, train_val_test_split=(0.8, 0.1, 0.1), workers=1,
-                 check_duplicate=False):
+                 check_duplicate=False, include_range: bool = False, range_boundaries=(60, 72)):
         assert feature in data_class_map.keys()
         self.check_duplicate = True
         self.save_dir = Path(save_dir)
@@ -393,6 +424,9 @@ class FeaturePreparation:
         self.workers = workers
         self.metadata = None
         self.check_duplicate = check_duplicate
+        self.include_range = include_range
+        # Range boundaries split the pitch space into three coarse bins by default.
+        self.range_boundaries = range_boundaries
 
     def extract_meta(self):
         meta_dataset = data_class_map[self.feature](self.data_dir_dict, self.train_val_test_split,
@@ -473,11 +507,31 @@ class FeaturePreparation:
                                                                               n_notes_valid / 1000, n_notes_test / 1000,
                                                                               n_notes_all / 1000))
 
+    def _compute_range_label(self, labels: np.ndarray) -> int:
+        """Coarsely bin the piece by its max pitch.
+
+        Args:
+            labels: np.ndarray of shape (N,) containing pitch labels
+
+        Returns:
+            int: range class id (0, 1, 2 by default)
+        """
+        pmax = int(np.max(labels))
+        low, mid = self.range_boundaries
+        if pmax < low:
+            return 0
+        if pmax < mid:
+            return 1
+        return 2
+
     def prepare_features(self):
         clog.info("prepare features")
 
         def prepare_one_midi(row_data):
             features, labels = feature_extractor_map[self.feature](row_data)
+            if self.include_range:
+                # Attach a coarse range label so downstream loaders don't need to recompute it.
+                return features, labels, self._compute_range_label(labels)
             return features, labels
 
         def prepare_split(split):
