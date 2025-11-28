@@ -19,7 +19,7 @@ import pretty_midi as pm
 from tqdm import tqdm
 
 from ttm.config import RD_SEED
-from ttm.data_preparation.utils import find_duplicate_midi, get_note_sequence_from_midi, midi_to_tap
+from ttm.data_preparation.utils import find_duplicate_midi, get_note_sequence_from_midi, midi_to_tap, ChordConstants
 from ttm.utils import clog
 
 warnings.filterwarnings("ignore", category=UserWarning, module='pkg_resources')
@@ -468,28 +468,6 @@ class ChordFeatureExtractor(BaseFeatureExtractor):
         features_with_chord.shape = (N, 5)
     """
 
-    NOTE_TO_PC = {
-        "C": 0, "B#": 0,
-        "C#": 1, "Db": 1,
-        "D": 2,
-        "D#": 3, "Eb": 3,
-        "E": 4, "Fb": 4,
-        "F": 5, "E#": 5,
-        "F#": 6, "Gb": 6,
-        "G": 7,
-        "G#": 8, "Ab": 8,
-        "A": 9,
-        "A#": 10, "Bb": 10,
-        "B": 11, "Cb": 11,
-    }
-
-    QUALITY_ORDER = ["maj", "min", "dim", "aug", "sus", "maj7", "min7", "7", "other"]
-    QUALITY_TO_ID = {q: i for i, q in enumerate(QUALITY_ORDER)}
-
-    NUM_ROOTS = 12
-    NUM_QUALITIES = len(QUALITY_ORDER)
-    N_ID = NUM_ROOTS * NUM_QUALITIES  # special ID for 'N' (no chord)
-
     def __init__(self):
         super().__init__()
 
@@ -522,12 +500,11 @@ class ChordFeatureExtractor(BaseFeatureExtractor):
 
     def _parse_chord_label(self, chord_label: str) -> int:
         if chord_label is None:
-            return self.N_ID
+            return ChordConstants.N_ID
 
         chord_label = chord_label.strip()
         if chord_label == "" or chord_label.upper() == "N":
-            return self.N_ID
-
+            return ChordConstants.N_ID
         if ":" in chord_label:
             root_str, qual_str = chord_label.split(":", 1)
         else:
@@ -537,14 +514,14 @@ class ChordFeatureExtractor(BaseFeatureExtractor):
         root_str = root_str.strip()
         qual_str = qual_str.strip()
 
-        root_pc = self.NOTE_TO_PC.get(root_str)
+        root_pc = ChordConstants.NOTE_TO_PC.get(root_str)
         if root_pc is None:
-            return self.N_ID
+            return ChordConstants.N_ID
 
         qual_norm = self._normalize_quality(qual_str)
-        qual_id = self.QUALITY_TO_ID[qual_norm]
+        qual_id = ChordConstants.QUALITY_TO_ID[qual_norm]
 
-        chord_id = qual_id * self.NUM_ROOTS + root_pc
+        chord_id = qual_id * ChordConstants.NUM_ROOTS + root_pc
         return chord_id
 
     def _load_chord_segments(self, chord_path: str):
@@ -578,7 +555,7 @@ class ChordFeatureExtractor(BaseFeatureExtractor):
         If no segment covers t, assign N_ID.
         """
         n = len(onsets)
-        chord_ids = np.full(n, self.N_ID, dtype=np.int32)
+        chord_ids = np.full(n, ChordConstants.N_ID, dtype=np.int32)
 
         if not segments:
             return chord_ids
@@ -595,7 +572,7 @@ class ChordFeatureExtractor(BaseFeatureExtractor):
             if start <= t < end:
                 chord_ids[i] = self._parse_chord_label(label)
             else:
-                chord_ids[i] = self.N_ID
+                chord_ids[i] = ChordConstants.N_ID
 
         return chord_ids
 
@@ -617,7 +594,7 @@ class ChordFeatureExtractor(BaseFeatureExtractor):
             chord_ids = self._align_chords_to_onsets(onsets, segments)
         else:
             clog.warning(f"No chord annotation file found for MIDI: {row_data.get('midi_path', 'unknown')}")
-            chord_ids = np.full(len(onsets), self.N_ID, dtype=np.int32)
+            chord_ids = np.full(len(onsets), ChordConstants.N_ID, dtype=np.int32)
 
         # Append chord_id as a new feature column
         chord_ids = chord_ids.astype(float).reshape(-1, 1)

@@ -8,6 +8,7 @@ import random
 import numpy as np
 
 from ttm.config import onset_tolerance, RD_SEED, MIN_PIANO_PITCH, MAX_PIANO_PITCH
+from ttm.data_preparation.utils import ChordConstants
 
 random.seed(RD_SEED)
 np.random.seed(RD_SEED)
@@ -172,10 +173,6 @@ class ChordDataAugmentation(BaseDataAugmentation):
         self.pitch_shift_prob = pitch_shift_prob
         self.pitch_shift_range = pitch_shift_range
 
-        # chord ID layout (must match ChordFeatureExtractor)
-        self.NUM_ROOTS = 12
-        self.NUM_QUALITIES = 9
-        self.N_ID = self.NUM_ROOTS * self.NUM_QUALITIES  # 108
 
     def __call__(self, note_sequence, annotations):
         note_sequence, annotations = self.tempo_change(note_sequence, annotations)
@@ -194,12 +191,11 @@ class ChordDataAugmentation(BaseDataAugmentation):
         """
         chord_id = qual_id * 12 + root_pc → transpose root_pc, keep quality.
         """
-        if chord_id == self.N_ID:
-            return self.N_ID
-        qual_id, root_pc = divmod(chord_id, self.NUM_ROOTS)
-        root_pc = (root_pc + shift) % self.NUM_ROOTS
-        return qual_id * self.NUM_ROOTS + root_pc
-
+        if chord_id == ChordConstants.N_ID:
+            return ChordConstants.N_ID
+        qual_id, root_pc = divmod(chord_id, ChordConstants.NUM_ROOTS)
+        root_pc = (root_pc + shift) % ChordConstants.NUM_ROOTS
+        return qual_id * ChordConstants.NUM_ROOTS + root_pc
     def pitch_shift(self, note_sequence, annotations):
         if random.random() > self.pitch_shift_prob:
             return note_sequence, annotations

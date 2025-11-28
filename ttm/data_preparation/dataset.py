@@ -11,9 +11,9 @@ import numpy as np
 import torch
 from torch.utils.data.dataset import Dataset
 
-from ttm.config import MAX_PIANO_PITCH, RD_SEED, MIN_PIANO_PITCH, CHORD_N_ID, config
+from ttm.config import MAX_PIANO_PITCH, RD_SEED, MIN_PIANO_PITCH, config
 from ttm.data_preparation.data_augmentation import BaseDataAugmentation, UnconditionalDataAugmentation, ChordDataAugmentation
-
+from ttm.data_preparation.utils import ChordConstants
 random.seed(RD_SEED)
 
 
@@ -55,7 +55,7 @@ class BaseDataset(Dataset):
 
         if n_feats > 4:
             # chord feature, give the pad the non chord id
-            pad_row[0, 4] = float(CHORD_N_ID)
+            pad_row[0, 4] = float(ChordConstants.N_ID)
 
         # Pad sos
         note_sequence = np.concatenate([pad_row, note_sequence], axis=0)
@@ -115,7 +115,7 @@ class ChordDataset(BaseDataset):
             pad_row[0, 0] = 88
 
             if D > 4:
-                pad_row[0, 4] = float(CHORD_N_ID)
+                pad_row[0, 4] = float(ChordConstants.N_ID)
 
             pad_block = np.repeat(pad_row, pad_len, axis=0)
             noteseq = np.concatenate([noteseq, pad_block], axis=0)

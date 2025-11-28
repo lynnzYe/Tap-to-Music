@@ -13,7 +13,6 @@ RD_SEED = 42
 
 MIN_PIANO_PITCH = 21
 MAX_PIANO_PITCH = 108
-CHORD_N_ID = 12 * 9
 onset_tolerance = 0.03
 
 config = yaml.safe_load(open(f'{ROOT}/config.yaml'))  # training, dataset, general config
