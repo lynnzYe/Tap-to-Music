@@ -228,10 +228,10 @@ class ChordDataAugmentation(BaseDataAugmentation):
         assert np.min(annotations) >= MIN_PIANO_PITCH and np.max(annotations) <= MAX_PIANO_PITCH
 
         if note_sequence.shape[1] > 4:
-            chord_ids = note_sequence[:, 4].astype(int)
+            chord_ids = note_sequence[1:, 4].astype(int)
             for i in range(len(chord_ids)):
                 chord_ids[i] = self._transpose_chord_id(int(chord_ids[i]), shift)
-            note_sequence[:, 4] = chord_ids.astype(note_sequence.dtype)
+            note_sequence[1:, 4] = chord_ids.astype(note_sequence.dtype)
 
         return note_sequence, annotations
 
