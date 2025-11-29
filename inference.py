@@ -10,7 +10,7 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 
-from ttm.config import model_config, MIN_PIANO_PITCH
+from ttm.config import model_config, MIN_PIANO_PITCH, dotenv_config
 from ttm.data_preparation.utils import midi_to_tap, get_note_sequence_from_midi, ChordConstants
 from ttm.data_preparation.feature_preparation import ChordFeatureExtractor
 from ttm.model.chord_model import ChordTapLSTM
@@ -44,8 +44,8 @@ def infer_taps(midi_path, model, device, temperature=1.0):
     return mid
 
 def infer_taps_chord(midi_path, chord_annot_path, model, device, temperature=1.0):
-    ns = get_note_sequence_from_midi(midi_path)      
-    taps, _ = midi_to_tap(ns)                         
+    ns = get_note_sequence_from_midi(midi_path)
+    taps, _ = midi_to_tap(ns)
     onsets = ns[:, 1]
     extractor = ChordFeatureExtractor()
 
@@ -57,7 +57,7 @@ def infer_taps_chord(midi_path, chord_annot_path, model, device, temperature=1.0
         chord_ids = np.full(len(onsets), ChordConstants.N_ID, dtype=np.int32)
 
     feats = np.concatenate([taps, chord_ids.reshape(-1, 1)], axis=1)
-    feats[0, 0] = 88  
+    feats[0, 0] = 88
 
     x = torch.tensor(feats, device=device, dtype=torch.float32)
     prev_pitch = -1
@@ -152,18 +152,11 @@ def main():
 
 def debug_main():
     args = parse_args(required=False)
-    # args.midi_path = '/Users/kurono/Documents/code/data/maestro-v3.0.0/2008/MIDI-Unprocessed_09_R3_2008_01-07_ORIG_MID--AUDIO_09_R3_2008_wav--1.midi'
-    # args.model_state_dict_path = '/Users/kurono/Desktop/10701 final/tap2music/output/ckpt/last.ckpt'
-    # args.feature = 'unconditional'
-    # args.temperature = 1.1
-    # args.output_dir = '/Users/kurono/Desktop/10701 final/tap2music/output/results'
-    # syn_taps(args)
-
-    args.feature = 'chord'
-    args.midi_path = '/Users/000flms/10701-IML/POP909-Dataset/POP909/655/655.mid'
-    args.chord_annot_path = '/Users/000flms/10701-IML/POP909-Dataset/POP909/655/chord_midi.txt'
-    args.model_state_dict_path = 'chord.ckpt'
-    args.output_dir = 'output'
+    args.midi_path = dotenv_config['MIDI_PATH']
+    args.model_state_dict_path = dotenv_config['CKPT_PATH']
+    args.feature = dotenv_config['FEATURE_TYPE']
+    args.temperature = 1.1
+    args.output_dir = dotenv_config['OUTPUT_DIR']
     syn_taps(args)
 
 

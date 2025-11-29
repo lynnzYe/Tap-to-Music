@@ -11,7 +11,7 @@ import numpy as np
 import torch
 from torch.utils.data.dataset import Dataset
 
-from ttm.config import MAX_PIANO_PITCH, RD_SEED, MIN_PIANO_PITCH, config
+from ttm.config import MAX_PIANO_PITCH, RD_SEED, MIN_PIANO_PITCH, config, dotenv_config
 from ttm.data_preparation.data_augmentation import BaseDataAugmentation, UnconditionalDataAugmentation, ChordDataAugmentation
 from ttm.data_preparation.utils import ChordConstants
 random.seed(RD_SEED)
@@ -102,7 +102,7 @@ class ChordDataset(BaseDataset):
         self.data_aug = ChordDataAugmentation()
 
     def __getitem__(self, item):
-        noteseq, labels = self._get_data(item)  
+        noteseq, labels = self._get_data(item)
 
         noteseq[:, 0] -= MIN_PIANO_PITCH
         labels = labels - MIN_PIANO_PITCH
@@ -127,9 +127,10 @@ class ChordDataset(BaseDataset):
 
 
 def main():
-    data = ChordDataset(
-        '/Users/000flms/10701-IML/Tap-to-Music/data/chord',
-        'train'
+    data = UnconditionalDataset(
+        feature_folder=dotenv_config['FEATURE_FOLDER'],
+        split=dotenv_config['SPLIT'],
+        feature_type=dotenv_config['FEATURE_TYPE']
     )
     for i in range(1):
         item = data.__getitem__(i)

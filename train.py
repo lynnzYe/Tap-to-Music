@@ -10,7 +10,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger, CSVLogger
 import torch
 
-from ttm.config import config, model_config
+from ttm.config import config, model_config, dotenv_config
 from ttm.data_preparation.data_module import UCDataModule
 from ttm.module.uc_module import configure_callbacks, UCModule
 from ttm.module.chord_module import ChordModule   # NEW: chord module
@@ -21,7 +21,7 @@ warnings.filterwarnings('ignore')
 
 feature_shorthand_map = {
     'unconditional': 'uc',
-    'chord': 'ch',        
+    'chord': 'ch',
 }
 
 
@@ -60,9 +60,10 @@ def train(args, use_wandb=True, resume_wandb_id=None, resume_ckpt=None):
 
     # Logger
     name = '' if args.name == '' else '-' + args.name
+    feature_name = feature_shorthand_map.get(args.feature, 'unknown')
     wandb_logger = WandbLogger(
         project='tap_music',
-        name=f'{feature_shorthand_map.get(args.feature, args.feature)}{name}',
+        name=f'{feature_name}{args.name}',
         save_dir=args.train_dir,
         id=resume_wandb_id,
         resume='allow'
@@ -131,18 +132,11 @@ def debug_main():
     parser = create_argparser()
     args = parser.parse_args()
 
-    # Example: debug unconditional
-    # args.feature = 'unconditional'
-    # args.train_dir = '/Users/kurono/Desktop/10701 final/tap_the_music/output/debug_uc'
-    # args.data_dir = '/Users/kurono/Desktop/10701 final/tap_the_music/output'
-    # args.name = 'debug_uc'
-    # args.device = 'cpu'
-
-    # Example: debug chord from scratch
-    args.feature = 'chord'
-    args.train_dir = 'data/chord/debug_ch'
-    args.data_dir = 'data/chord'
-    args.name = 'debug_ch'
+    # TODO Maybe use dotenv for convenient debug
+    args.feature = dotenv_config['FEATURE_TYPE']
+    args.train_dir = dotenv_config['DEBUG_DIR']
+    args.data_dir = dotenv_config['DATA_DIR']
+    args.name = dotenv_config['TRAIN_NAME']
     args.device = 'cpu'
     args.uc_ckpt_path = ''       # set to UC ckpt path to warm-start
     args.freeze_uc = False

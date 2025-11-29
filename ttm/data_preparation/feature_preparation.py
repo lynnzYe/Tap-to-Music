@@ -18,7 +18,7 @@ import pandas as pd
 import pretty_midi as pm
 from tqdm import tqdm
 
-from ttm.config import RD_SEED
+from ttm.config import RD_SEED, dotenv_config
 from ttm.data_preparation.utils import find_duplicate_midi, get_note_sequence_from_midi, midi_to_tap, ChordConstants
 from ttm.utils import clog
 
@@ -159,7 +159,7 @@ def parse_pop909_dataset(data_dir, train_val_test_split=(0.8, 0.1, 0.1)):
 
         # Find chord annotation
         chord_path = None
-        
+
         if (idx_dir / "chord_midi.txt").exists():
             chord_path = str(idx_dir / "chord_midi.txt")
         elif (idx_dir / "chord_audio" / "beat_audio.txt").exists():
@@ -169,7 +169,7 @@ def parse_pop909_dataset(data_dir, train_val_test_split=(0.8, 0.1, 0.1)):
             clog.warning(f"No chord annotation found for {idx_dir}")
             continue
 
-        piece_name = idx_dir.name   
+        piece_name = idx_dir.name
         composer = "POP909"         # POP909 do not have composer
 
         rows.append({
@@ -564,7 +564,7 @@ class ChordFeatureExtractor(BaseFeatureExtractor):
         n_seg = len(segments)
 
         for i, t in enumerate(onsets):
-            
+
             while seg_idx < n_seg - 1 and t >= segments[seg_idx][1]:
                 seg_idx += 1
 
@@ -740,18 +740,15 @@ class FeaturePreparation:
 
 
 def extract_unconditional_feature():
-    mstr_path = '/Users/kurono/Documents/code/data/maestro-v3.0.0'
-    asap_path = '/Users/kurono/Documents/code/data/acpas/asap'
-
     datasets = {
-        'maestro': '/Users/kurono/Documents/code/data/maestro-v3.0.0',
-        'asap': '/Users/kurono/Documents/code/data/acpas/asap',
-        'pop909': '/Users/kurono/Documents/code/data/POP909-Dataset-master', # require further processing
-        'hannds': '/Users/kurono/Documents/code/data/hannds-master'
+        'maestro': dotenv_config['MAESTRO_PATH'],
+        'asap': dotenv_config['ASAP_PATH'],
+        'pop909': dotenv_config['POP909_PATH'],
+        'hannds': dotenv_config['HANNDS_PATH']
     }
 
-    fp = FeaturePreparation(feature='unconditional',
-                            save_dir='/Users/kurono/Desktop/10701 final/tap`_the_music/output',
+    fp = FeaturePreparation(feature=dotenv_config['FEATURE_TYPE'],
+                            save_dir=dotenv_config['OUTPUT_DIR'],
                             data_dir_dict=datasets,
                             check_duplicate=True)
     # fp.extract_meta()
@@ -764,12 +761,12 @@ def extract_unconditional_feature():
 
 def extract_chord_feature():
     datasets = {
-        'pop909': '/Users/000flms/10701-IML/POP909-Dataset'
+        'pop909': dotenv_config['POP909_PATH']
     }
 
     fp = FeaturePreparation(
-        feature='chord',
-        save_dir='/Users/000flms/10701-IML/Tap-to-Music/data/chord',
+        feature=dotenv_config['FEATURE_TYPE'],
+        save_dir=dotenv_config['DATA_DIR'],
         data_dir_dict=datasets,
         check_duplicate=False
     )

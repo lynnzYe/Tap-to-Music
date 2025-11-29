@@ -6,7 +6,7 @@ Brief:
 import pytorch_lightning as pl
 import torch
 
-from ttm.config import config
+from ttm.config import config, dotenv_config
 from ttm.data_preparation.dataset import ChordDataset, UnconditionalDataset
 
 
@@ -72,21 +72,9 @@ class UCDataModule(pl.LightningDataModule):
 
 def main():
     # Check data module
-    # data = UCDataModule('/Users/kurono/Desktop/10701 final/tap_the_music/output',
-    #                     feature='unconditional')
-    # tr = data.train_dataloader()
-    # for i, batch in enumerate(tr):
-    #     if torch.max(batch[0][:, :, 0]) > 88:
-    #         raise Exception('wtf')
-    #     # print(batch)
-
-    chord_data = UCDataModule(
-        '/Users/000flms/10701-IML/Tap-to-Music/data/chord',
-        feature='chord'
-    )
-    tr_chord = chord_data.train_dataloader()
-    for i, batch in enumerate(tr_chord):
-        
+    data = UCDataModule(dotenv_config['DATA_DIR'], feature=dotenv_config['FEATURE_TYPE'])
+    tr = data.train_dataloader()
+    for i, batch in enumerate(tr):
         if torch.max(batch[0][:, :, 0]) > 88:
             raise Exception('chord pitch index out of range')
         
