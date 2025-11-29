@@ -9,7 +9,7 @@ import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
 
-from ttm.config import model_config, DEBUG_DIR, DATA_DIR, FEATURE_TYPE
+from ttm.config import model_config, dotenv_config
 from ttm.data_preparation.data_module import UCDataModule
 from ttm.model.uc_model import UCTapLSTM
 
@@ -118,14 +118,14 @@ class UCModule(pl.LightningModule):
 
 def check_training_step():
     trainer = pl.Trainer(
-        default_root_dir=DEBUG_DIR,
+        default_root_dir=dotenv_config['DEBUG_DIR'],
         log_every_n_steps=50,
         check_val_every_n_epoch=1,
         reload_dataloaders_every_n_epochs=1,
         accelerator='cpu'
     )
-    model = UCModule(model_config[FEATURE_TYPE])
-    data = UCDataModule(DATA_DIR)
+    model = UCModule(model_config[dotenv_config['FEATURE_TYPE']])
+    data = UCDataModule(dotenv_config['DATA_DIR'])
     trainer.fit(model, data)
 
 

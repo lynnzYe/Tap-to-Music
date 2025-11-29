@@ -13,7 +13,7 @@ import numpy as np
 import pretty_midi as pm
 from tqdm import tqdm
 
-from ttm.config import MAX_PIANO_PITCH
+from ttm.config import MAX_PIANO_PITCH, dotenv_config
 from ttm.utils import clog
 
 
@@ -142,8 +142,8 @@ def main():
     # notes = get_note_sequence_from_midi('/Users/kurono/Documents/code/data/acpas/asap/Bach/Fugue/bwv_846/Shi05M.mid')
     # taps, labels = midi_to_tap(notes)
 
-    duplicates = find_duplicate_midi(collect_midi_files('/Users/kurono/Documents/code/data/hannds-master'),
-                                     collect_midi_files('/Users/kurono/Documents/code/data/maestro-v3.0.0'))
+    duplicates = find_duplicate_midi(collect_midi_files(dotenv_config['HANNDS_PATH']),
+                                     collect_midi_files(dotenv_config['MAESTRO_PATH']))
     print(duplicates)
 
 

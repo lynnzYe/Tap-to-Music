@@ -9,7 +9,7 @@ import warnings
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger, CSVLogger
 
-from ttm.config import config, model_config, DEBUG_DIR, DATA_DIR, FEATURE_TYPE
+from ttm.config import config, model_config, dotenv_config
 from ttm.data_preparation.data_module import UCDataModule
 from ttm.module.uc_module import configure_callbacks, UCModule
 
@@ -33,9 +33,10 @@ def train(args, use_wandb=True, resume_wandb_id=None, resume_ckpt=None):
 
     # Logger
     name = '' if args.name == '' else '-' + args.name
+    feature_name = feature_shorthand_map.get(args.feature, 'unknown')
     wandb_logger = WandbLogger(
         project='tap_music',
-        name=f'{feature_shorthand_map.get(args.feature, args.featuref)}{args.name}',
+        name=f'{feature_name}{args.name}',
         save_dir=args.train_dir,
         id=resume_wandb_id,
         resume='allow'
@@ -86,10 +87,10 @@ def debug_main():
     args = parser.parse_args()
 
     # TODO Maybe use dotenv for convenient debug
-    args.feature = FEATURE_TYPE
-    args.train_dir = DEBUG_DIR
-    args.data_dir = DATA_DIR
-    args.name = 'debug'
+    args.feature = dotenv_config['FEATURE_TYPE']
+    args.train_dir = dotenv_config['DEBUG_DIR']
+    args.data_dir = dotenv_config['DATA_DIR']
+    args.name = dotenv_config['TRAIN_NAME']
     args.device = 'cpu'
 
     if args.feature not in config.keys():

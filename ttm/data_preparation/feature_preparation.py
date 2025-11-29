@@ -18,7 +18,7 @@ import pandas as pd
 import pretty_midi as pm
 from tqdm import tqdm
 
-from ttm.config import RD_SEED, OUTPUT_DIR, FEATURE_TYPE
+from ttm.config import RD_SEED, dotenv_config
 from ttm.data_preparation.utils import find_duplicate_midi, get_note_sequence_from_midi, midi_to_tap
 from ttm.utils import clog
 
@@ -498,18 +498,15 @@ class FeaturePreparation:
 
 
 def extract_unconditional_feature():
-    mstr_path = '/Users/kurono/Documents/code/data/maestro-v3.0.0'
-    asap_path = '/Users/kurono/Documents/code/data/acpas/asap'
-
     datasets = {
-        'maestro': '/Users/kurono/Documents/code/data/maestro-v3.0.0',
-        'asap': '/Users/kurono/Documents/code/data/acpas/asap',
-        'pop909': '/Users/kurono/Documents/code/data/POP909-Dataset-master',  # require further processing
-        'hannds': '/Users/kurono/Documents/code/data/hannds-master'
+        'maestro': dotenv_config['MAESTRO_PATH'],
+        'asap': dotenv_config['ASAP_PATH'],
+        'pop909': dotenv_config['POP909_PATH'],
+        'hannds': dotenv_config['HANNDS_PATH']
     }
 
-    fp = FeaturePreparation(feature=FEATURE_TYPE,
-                            save_dir=OUTPUT_DIR,
+    fp = FeaturePreparation(feature=dotenv_config['FEATURE_TYPE'],
+                            save_dir=dotenv_config['OUTPUT_DIR'],
                             data_dir_dict=datasets,
                             check_duplicate=True)
     # fp.extract_meta()

@@ -11,7 +11,7 @@ import numpy as np
 import torch
 from torch.utils.data.dataset import Dataset
 
-from ttm.config import MAX_PIANO_PITCH, RD_SEED, MIN_PIANO_PITCH, config, FEATURE_FOLDER, SPLIT, FEATURE_TYPE
+from ttm.config import MAX_PIANO_PITCH, RD_SEED, MIN_PIANO_PITCH, config, dotenv_config
 from ttm.data_preparation.data_augmentation import BaseDataAugmentation, UnconditionalDataAugmentation
 
 random.seed(RD_SEED)
@@ -90,9 +90,9 @@ class UnconditionalDataset(BaseDataset):
 
 def main():
     data = UnconditionalDataset(
-        feature_folder=FEATURE_FOLDER,
-        split=SPLIT,
-        feature_type=FEATURE_TYPE
+        feature_folder=dotenv_config['FEATURE_FOLDER'],
+        split=dotenv_config['SPLIT'],
+        feature_type=dotenv_config['FEATURE_TYPE']
     )
     for i in range(len(data)):
         item = data.__getitem__(0)

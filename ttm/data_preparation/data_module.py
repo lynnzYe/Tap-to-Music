@@ -6,7 +6,7 @@ Brief:
 import pytorch_lightning as pl
 import torch
 
-from ttm.config import config, DATA_DIR, FEATURE_TYPE
+from ttm.config import config, dotenv_config
 from ttm.data_preparation.dataset import UnconditionalDataset
 
 
@@ -65,7 +65,7 @@ class UCDataModule(pl.LightningDataModule):
 
 def main():
     # Check data module
-    data = UCDataModule(DATA_DIR, feature=FEATURE_TYPE)
+    data = UCDataModule(dotenv_config['DATA_DIR'], feature=dotenv_config['FEATURE_TYPE'])
     tr = data.train_dataloader()
     for i, batch in enumerate(tr):
         if torch.max(batch[0][:, :, 0]) > 88:

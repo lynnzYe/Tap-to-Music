@@ -10,7 +10,7 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 
-from ttm.config import model_config, MIN_PIANO_PITCH
+from ttm.config import model_config, MIN_PIANO_PITCH, dotenv_config
 from ttm.data_preparation.utils import midi_to_tap, get_note_sequence_from_midi
 from ttm.model.uc_model import UCTapLSTM
 from ttm.module.uc_module import parse_model_config
@@ -99,11 +99,11 @@ def main():
 
 def debug_main():
     args = parse_args(required=False)
-    args.midi_path = '/Users/kurono/Documents/code/data/maestro-v3.0.0/2008/MIDI-Unprocessed_09_R3_2008_01-07_ORIG_MID--AUDIO_09_R3_2008_wav--1.midi'
-    args.model_state_dict_path = '/Users/kurono/Desktop/10701 final/tap2music/output/ckpt/last.ckpt'
-    args.feature = 'unconditional'
+    args.midi_path = dotenv_config['MIDI_PATH']
+    args.model_state_dict_path = dotenv_config['CKPT_PATH']
+    args.feature = dotenv_config['FEATURE_TYPE']
     args.temperature = 1.1
-    args.output_dir = '/Users/kurono/Desktop/10701 final/tap2music/output/results'
+    args.output_dir = dotenv_config['OUTPUT_DIR']
     syn_taps(args)
 
 
