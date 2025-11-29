@@ -7,10 +7,13 @@ import yaml
 from dotenv import load_dotenv
 
 LOG_LEVEL = logging.DEBUG
+DOTENV_PATH = os.path.join(Path(__file__).resolve().parent, ".env")
+assert os.path.exists(DOTENV_PATH), "Create .env file to define your paths (data dir, model ckpt etc.)"
 load_dotenv(os.path.join(Path(__file__).resolve().parent, ".env"))
 dotenv_config = {key: os.getenv(key) for key in [
     "FEATURE_FOLDER", "FEATURE_TYPE", "SPLIT", "DATA_DIR", "TRAIN_NAME", "OUTPUT_DIR",
-    "DEBUG_DIR", "CKPT_PATH", "MAESTRO_PATH", "ASAP_PATH", "POP909_PATH", "HANNDS_PATH"
+    "DEBUG_DIR", "CKPT_PATH", "MAESTRO_PATH", "ASAP_PATH", "POP909_PATH", "HANNDS_PATH",
+    "CHORD_ANNOT_PATH"
 ]}
 
 warnings.filterwarnings("ignore", category=UserWarning, module='pkg_resources')

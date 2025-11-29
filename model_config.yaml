@@ -3,3 +3,7 @@
 unconditional:
   dummy_attr: 1
   learning_rate: 3e-4
+
+chord:
+  dummy_attr: 1
+  learning_rate: 3e-4

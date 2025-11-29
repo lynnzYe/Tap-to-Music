@@ -5,6 +5,11 @@ unconditional:
   num_workers: 1
   max_length: 128
 
+chord:
+  batch_size: 64
+  num_workers: 1
+  max_length: 128
+
 
 # Global config
 seed: 42
