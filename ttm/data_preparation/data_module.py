@@ -6,21 +6,28 @@ Brief:
 import pytorch_lightning as pl
 import torch
 
-from ttm.config import config, DATA_DIR, FEATURE_TYPE
-from ttm.data_preparation.dataset import UnconditionalDataset
+from ttm.config import config, dotenv_config
+from ttm.data_preparation.dataset import ChordDataset, UnconditionalDataset
 
 
 # UnconditionalTapDataModule
 class UCDataModule(pl.LightningDataModule):
     def __init__(self, data_dir, feature='unconditional'):
         super().__init__()
+        assert feature in ['unconditional', 'chord'], f"Unsupported feature type: {feature}"
         self.data_dir = data_dir
         self.feature = feature
 
     def _get_dataset(self, split):
         assert split in ['train', 'validation', 'test']
-        assert self.feature == 'unconditional'
-        dataset = UnconditionalDataset(self.data_dir, split, self.feature)
+        if self.feature == 'unconditional':
+            dataset_cls = UnconditionalDataset
+        elif self.feature == 'chord':
+            dataset_cls = ChordDataset
+        else:
+            raise ValueError(f"Unsupported feature type: {self.feature}")
+
+        dataset = dataset_cls(self.data_dir, split, self.feature)
         return dataset
 
     def train_dataloader(self):
@@ -65,15 +72,16 @@ class UCDataModule(pl.LightningDataModule):
 
 def main():
     # Check data module
-    data = UCDataModule(DATA_DIR, feature=FEATURE_TYPE)
+    data = UCDataModule(dotenv_config['DATA_DIR'], feature=dotenv_config['FEATURE_TYPE'])
     tr = data.train_dataloader()
     for i, batch in enumerate(tr):
         if torch.max(batch[0][:, :, 0]) > 88:
-            raise Exception('wtf')
-        # print(batch)
+            raise Exception('chord pitch index out of range')
+        
+        print(batch[0].shape, batch[1].shape)
+        break
 
     print("Hello, world!")
-
 
 if __name__ == "__main__":
     main()

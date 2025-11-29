@@ -2,3 +2,4 @@ torch
 mido
 pytorch_lightning
 python-dotenv
+pandas
