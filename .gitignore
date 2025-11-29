@@ -216,3 +216,34 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+yzq/checkpoints/
+yzq/output/
+yzq/generated_examples/
+
+# Dataset folders
+POP909-Dataset/
+maestro/
+asap/
+
+# Wandb logs
+wandb/
+**/wandb/
+
+# Model checkpoints
+*.ckpt
+*.pt
+*.pth
+
+# Pickle data files
+*.pkl
+
+# Audio/MIDI outputs
+*.wav
+*.mid
+*.midi
+
+# Logs
+logs/
+**/logs/
+*.log

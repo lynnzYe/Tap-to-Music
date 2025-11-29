@@ -157,161 +157,74 @@ class UnconditionalDataAugmentation(BaseDataAugmentation):
         return note_sequence, annotations
 
 
-class RangeDataAugmentation(BaseDataAugmentation):
+class HandDataAugmentation(BaseDataAugmentation):
     """
     Wrap unconditional augmentation but recompute a coarse octave range afterwards.
     The optional fifth column of note_sequence (range id) is updated in place if present.
     """
-
     def __init__(self, **kwargs):
         super().__init__()
-        # Reuse unconditional augmentation settings; kwargs forward overrides if needed.
-        self.base_aug = UnconditionalDataAugmentation(**kwargs)
+        self.aug = UnconditionalDataAugmentation(**kwargs)
 
-    @staticmethod
-    def _octave_range(pitches: np.ndarray):
-        #TODO: remove outliers, compute more robustly
-        valid = pitches[(pitches > 0) & (pitches <= MAX_PIANO_PITCH)]
-        if len(valid) == 0:
-            return None
-        min_oct = int(valid.min()) // 12 - 1
-        max_oct = int(valid.max()) // 12 - 1
-        return (min_oct, max_oct)
+    def __call__(self, note_sequence, annotations):
+        note_sequence, annotations = self.aug(note_sequence, annotations)
 
-    def __call__(self, note_sequence, annotations, piece_range=None):
-        # Apply the standard unconditional augmentations first.
-        note_sequence, annotations = self.base_aug(note_sequence, annotations)
+        if note_sequence.shape[1] < 5:
+            return note_sequence, annotations
 
-        # Recompute octave span from augmented annotations.
-        octave_range = self._octave_range(annotations)
-        range_val = None
-        if octave_range is not None:
-            range_val = octave_range[1]  # use max octave as a scalar condition
-        elif isinstance(piece_range, tuple):
-            range_val = piece_range[1]
-        elif piece_range is not None:
-            range_val = piece_range
-        else:
-            range_val = 0
+        # Recompute coarse range id
+        pitches = note_sequence[1:, 0]  # skip pad
+        min_pitch = pitches.min()
+        max_pitch = pitches.max()
+        center_pitch = (min_pitch + max_pitch) / 2.0
+        range_id = int(center_pitch // 12)  # octave-based range id
+        note_sequence[:, 4] = range_id
+        return note_sequence, annotations
 
-        # If a range column exists (5th column), update it so downstream sees the new condition.
-        if note_sequence.shape[1] >= 5:
-            note_sequence[:, 4] = range_val
 
-        return note_sequence, annotations, octave_range
+class RangeDataAugmentation(BaseDataAugmentation):
+    """
+    Data augmentation for range-conditioned features.
+    Wraps unconditional augmentation and updates range label after pitch shift.
+    """
+    def __init__(self, **kwargs):
+        super().__init__()
+        self.aug = UnconditionalDataAugmentation(**kwargs)
+
+    def __call__(self, note_sequence, annotations, range_label=None):
+        note_sequence, annotations = self.aug(note_sequence, annotations)
+        
+        # Recompute range label based on shifted pitches
+        if range_label is not None:
+            pitches = note_sequence[1:, 0]  # skip pad
+            center_pitch = (pitches.min() + pitches.max()) / 2.0
+            new_range = int(center_pitch // 12)
+            return note_sequence, annotations, new_range
+        
+        return note_sequence, annotations, range_label
 
 
 class ClusterAugmentation(BaseDataAugmentation):
     """
-    Compute hand labels via a HANNDs checkpoint, store a left/right flag, and per-hand medians.
-    Columns appended (in order): median (col 4 if present), hand_flag (0=L,1=R), left_median, right_median.
+    Data augmentation for cluster/median-based features.
+    Wraps unconditional augmentation and recomputes median after pitch shift.
     """
-
-    def __init__(self, checkpoint_path: str = None, device: str = "cpu", **kwargs):
+    def __init__(self, **kwargs):
         super().__init__()
-        # Mirror UC augmentation to keep tempo/pitch shift consistent
-        self.base_aug = UnconditionalDataAugmentation(**kwargs)
-        self.checkpoint_path = checkpoint_path
-        self.device = torch.device(device)
-        self.model = None
-
-    def _load_model(self):
-        if self.model is not None:
-            return
-        if not self.checkpoint_path:
-            return
-        hannds_dir = Path(__file__).resolve().parents[2] / "hannds"
-        if hannds_dir.exists() and str(hannds_dir) not in sys.path:
-            sys.path.append(str(hannds_dir))
-        try:
-            from hannds.network_zoo import Network88  # noqa: WPS433
-        except Exception as exc:
-            print(f"[ClusterAugmentation] Failed to import HANNDs model: {exc}")
-            return
-        add_safe_globals([Network88])
-        try:
-            state = torch.load(self.checkpoint_path, map_location=self.device, weights_only=False)
-        except TypeError:
-            state = torch.load(self.checkpoint_path, map_location=self.device)
-        if isinstance(state, torch.nn.Module):
-            self.model = state.to(self.device).eval()
-        else:
-            # Assume default Network88 signature used in training; fall back if mismatch.
-            try:
-                self.model = Network88(
-                    hidden_size=70, n_layers=2, bidirectional=False,
-                    n_features=88, n_categories=3, rnn_type="LSTM"
-                ).to(self.device)
-                if isinstance(state, dict) and "state_dict" in state:
-                    self.model.load_state_dict(state["state_dict"])
-                else:
-                    self.model.load_state_dict(state)
-                self.model.eval()
-            except Exception as exc:
-                print(f"[ClusterAugmentation] Failed to construct/load model: {exc}")
-                self.model = None
-
-    def _predict_hands(self, annotations: np.ndarray):
-        """
-        Predict hand flags (0=L, 1=R) using the HANNDs model on a pitch-only binary sequence.
-        """
-        self._load_model()
-        if self.model is None:
-            return np.zeros_like(annotations, dtype=float)
-
-        valid_mask = (annotations >= MIN_PIANO_PITCH) & (annotations <= MAX_PIANO_PITCH) & (annotations != 88)
-        T = len(annotations)
-        X = np.zeros((1, T, 88), dtype=np.float32)
-        for t in range(T):
-            if valid_mask[t]:
-                p_idx = int(annotations[t] - MIN_PIANO_PITCH)
-                X[0, t, p_idx] = 1.0
-        x_tensor = torch.tensor(X, device=self.device, dtype=torch.float32)
-        with torch.no_grad():
-            output, _ = self.model(x_tensor, None)
-        # output shape: [1, T, 88, 3]; classes: 0=none,1=left,2=right
-        preds = torch.argmax(output, dim=-1).cpu().numpy()[0]  # (T,88)
-        hand_flags = np.zeros(T, dtype=float)
-        for t in range(T):
-            if valid_mask[t]:
-                cls = int(preds[t, int(annotations[t] - MIN_PIANO_PITCH)])
-                hand_flags[t] = 1.0 if cls == 2 else 0.0  # right=1, left/none=0
-        return hand_flags
+        self.aug = UnconditionalDataAugmentation(**kwargs)
 
     def __call__(self, note_sequence, annotations):
-        note_sequence, annotations = self.base_aug(note_sequence, annotations)
-        valid_mask = (annotations > 0) & (annotations <= MAX_PIANO_PITCH)
-        median_val = float(np.median(annotations[valid_mask])) if np.any(valid_mask) else 0.0
-
-        hand_flags = self._predict_hands(annotations)
-        left_mask = (hand_flags == 0) & valid_mask
-        right_mask = (hand_flags == 1) & valid_mask
-        left_median = float(np.median(annotations[left_mask])) if np.any(left_mask) else median_val
-        right_median = float(np.median(annotations[right_mask])) if np.any(right_mask) else median_val
-
-        if note_sequence.shape[1] >= 5:
-            updated = note_sequence.copy()
-            updated[:, 4] = median_val
-        else:
-            updated = np.concatenate([note_sequence, np.full((len(note_sequence), 1), median_val)], axis=1)
-
-        # Ensure hand flag column (col 5)
-        if updated.shape[1] >= 6:
-            updated[:, 5] = hand_flags
-        else:
-            updated = np.concatenate([updated, hand_flags.reshape(-1, 1)], axis=1)
-
-        # Ensure left and right medians (cols 6, 7)
-        if updated.shape[1] >= 7:
-            updated[:, 6] = left_median
-        else:
-            updated = np.concatenate([updated, np.full((len(updated), 1), left_median)], axis=1)
-        if updated.shape[1] >= 8:
-            updated[:, 7] = right_median
-        else:
-            updated = np.concatenate([updated, np.full((len(updated), 1), right_median)], axis=1)
-
-        return updated, annotations, (median_val, left_median, right_median)
+        note_sequence, annotations = self.aug(note_sequence, annotations)
+        
+        # Recompute median pitch
+        pitches = note_sequence[1:, 0]  # skip pad
+        median_pitch = np.median(pitches)
+        
+        # Return median info as tuple (overall_median, left_median, right_median)
+        # For now, use same median for all
+        median_info = (median_pitch, median_pitch, median_pitch)
+        
+        return note_sequence, annotations, median_info
 
 
 def main():
