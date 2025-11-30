@@ -4,14 +4,11 @@ Created on: 2025/11/13
 Brief: reference - PM2S data augmentation
 """
 import random
-import sys
-from pathlib import Path
 
 import numpy as np
-import torch
-from torch.serialization import add_safe_globals
 
 from ttm.config import onset_tolerance, RD_SEED, MIN_PIANO_PITCH, MAX_PIANO_PITCH
+from ttm.data_preparation.utils import ChordConstants
 
 random.seed(RD_SEED)
 np.random.seed(RD_SEED)
@@ -157,11 +154,91 @@ class UnconditionalDataAugmentation(BaseDataAugmentation):
         return note_sequence, annotations
 
 
+class ChordDataAugmentation(BaseDataAugmentation):
+    """
+    Data augmentation for chord-conditioned data.
+
+    - [prev_pitch, log_dt, log_eff_dur, prev_vel, chord_id]
+
+    - Tempo change: same as unconditional.
+    - Pitch shift: same as unconditional, also transpose chord_id.
+
+    Chord ID semantics are the same as in ChordFeatureExtractor
+    """
+
+    def __init__(self, tempo_change_prob=1.0, tempo_change_range=(0.8, 1.2),
+                 pitch_shift_prob=1.0, pitch_shift_range=(-12, 12)):
+        super().__init__()
+        self.tempo_change_prob = tempo_change_prob
+        self.tempo_change_range = tempo_change_range
+        self.pitch_shift_prob = pitch_shift_prob
+        self.pitch_shift_range = pitch_shift_range
+
+    def __call__(self, note_sequence, annotations):
+        note_sequence, annotations = self.tempo_change(note_sequence, annotations)
+        note_sequence, annotations = self.pitch_shift(note_sequence, annotations)
+        return note_sequence, annotations
+
+    def tempo_change(self, note_sequence, annotations):
+        if random.random() > self.tempo_change_prob:
+            return note_sequence, annotations
+        tempo_change_ratio = random.uniform(*self.tempo_change_range)
+
+        note_sequence[:, 1:3] *= 1 / tempo_change_ratio
+        return note_sequence, annotations
+
+    def _transpose_chord_id(self, chord_id: int, shift: int) -> int:
+        """
+        chord_id = qual_id * 12 + root_pc → transpose root_pc, keep quality.
+        """
+        if chord_id == ChordConstants.N_ID:
+            return ChordConstants.N_ID
+        qual_id, root_pc = divmod(chord_id, ChordConstants.NUM_ROOTS)
+        root_pc = (root_pc + shift) % ChordConstants.NUM_ROOTS
+        return qual_id * ChordConstants.NUM_ROOTS + root_pc
+
+    def pitch_shift(self, note_sequence, annotations):
+        if random.random() > self.pitch_shift_prob:
+            return note_sequence, annotations
+
+        assert int(note_sequence[0, 0]) == MAX_PIANO_PITCH + 1, \
+            'expected a pad input tuple at the start of input seq.'
+
+        pitches = note_sequence[1:, 0]
+        annot_pitches = annotations
+        all_pitches = np.concatenate([pitches, annot_pitches], axis=0)
+
+        max_down = MIN_PIANO_PITCH - all_pitches.min().item()  # negative number
+        max_up = MAX_PIANO_PITCH - all_pitches.max().item()  # positive number
+
+        lower = max(self.pitch_shift_range[0], max_down)
+        upper = min(self.pitch_shift_range[1], max_up)
+        if lower > upper:
+            return note_sequence, annotations
+
+        shift = np.random.randint(lower, upper + 1)
+
+        note_sequence[1:, 0] += shift
+        annotations += shift
+
+        assert np.min(note_sequence[1:, 0]) >= MIN_PIANO_PITCH and np.max(note_sequence[1:, 0]) <= MAX_PIANO_PITCH
+        assert np.min(annotations) >= MIN_PIANO_PITCH and np.max(annotations) <= MAX_PIANO_PITCH
+
+        if note_sequence.shape[1] > 4:
+            chord_ids = note_sequence[1:, 4].astype(int)
+            for i in range(len(chord_ids)):
+                chord_ids[i] = self._transpose_chord_id(int(chord_ids[i]), shift)
+            note_sequence[1:, 4] = chord_ids.astype(note_sequence.dtype)
+
+        return note_sequence, annotations
+
+
 class HandDataAugmentation(BaseDataAugmentation):
     """
     Wrap unconditional augmentation but recompute a coarse octave range afterwards.
     The optional fifth column of note_sequence (range id) is updated in place if present.
     """
+
     def __init__(self, **kwargs):
         super().__init__()
         self.aug = UnconditionalDataAugmentation(**kwargs)
@@ -187,20 +264,21 @@ class RangeDataAugmentation(BaseDataAugmentation):
     Data augmentation for range-conditioned features.
     Wraps unconditional augmentation and updates range label after pitch shift.
     """
+
     def __init__(self, **kwargs):
         super().__init__()
         self.aug = UnconditionalDataAugmentation(**kwargs)
 
     def __call__(self, note_sequence, annotations, range_label=None):
         note_sequence, annotations = self.aug(note_sequence, annotations)
-        
+
         # Recompute range label based on shifted pitches
         if range_label is not None:
             pitches = note_sequence[1:, 0]  # skip pad
             center_pitch = (pitches.min() + pitches.max()) / 2.0
             new_range = int(center_pitch // 12)
             return note_sequence, annotations, new_range
-        
+
         return note_sequence, annotations, range_label
 
 
@@ -209,21 +287,22 @@ class ClusterAugmentation(BaseDataAugmentation):
     Data augmentation for cluster/median-based features.
     Wraps unconditional augmentation and recomputes median after pitch shift.
     """
+
     def __init__(self, **kwargs):
         super().__init__()
         self.aug = UnconditionalDataAugmentation(**kwargs)
 
     def __call__(self, note_sequence, annotations):
         note_sequence, annotations = self.aug(note_sequence, annotations)
-        
+
         # Recompute median pitch
         pitches = note_sequence[1:, 0]  # skip pad
         median_pitch = np.median(pitches)
-        
+
         # Return median info as tuple (overall_median, left_median, right_median)
         # For now, use same median for all
         median_info = (median_pitch, median_pitch, median_pitch)
-        
+
         return note_sequence, annotations, median_info
 
 

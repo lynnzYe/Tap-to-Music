@@ -18,8 +18,8 @@ import pandas as pd
 import pretty_midi as pm
 from tqdm import tqdm
 
-from ttm.config import RD_SEED
-from ttm.data_preparation.utils import find_duplicate_midi, get_note_sequence_from_midi, midi_to_tap
+from ttm.config import RD_SEED, dotenv_config
+from ttm.data_preparation.utils import find_duplicate_midi, get_note_sequence_from_midi, midi_to_tap, ChordConstants
 from ttm.utils import clog
 
 warnings.filterwarnings("ignore", category=UserWarning, module='pkg_resources')
@@ -134,6 +134,75 @@ def parse_asap_data(asap_dir):
     # Sort for readability
     df = df.sort_values(by=['composer', 'piece_name']).reset_index(drop=True)
 
+    return df
+
+
+def parse_pop909_dataset(data_dir, train_val_test_split=(0.8, 0.1, 0.1)):
+    data_dir = Path(data_dir)
+
+    if (data_dir / "POP909").exists():
+        pop_root = data_dir / "POP909"
+    else:
+        pop_root = data_dir
+
+    rows = []
+
+    for idx_dir in sorted(pop_root.iterdir()):
+        if not idx_dir.is_dir():
+            continue
+
+        midi_candidates = list(idx_dir.glob("*.mid")) + list(idx_dir.glob("*.midi"))
+        if not midi_candidates:
+            continue
+
+        midi_path = str(midi_candidates[0])
+
+        # Find chord annotation
+        chord_path = None
+
+        if (idx_dir / "chord_midi.txt").exists():
+            chord_path = str(idx_dir / "chord_midi.txt")
+        elif (idx_dir / "chord_audio" / "beat_audio.txt").exists():
+            chord_path = str(idx_dir / "chord_audio" / "beat_audio.txt")
+
+        if chord_path is None:
+            clog.warning(f"No chord annotation found for {idx_dir}")
+            continue
+
+        piece_name = idx_dir.name
+        composer = "POP909"  # POP909 do not have composer
+
+        rows.append({
+            "source": "pop909",
+            "composer": composer,
+            "piece_name": piece_name,
+            "midi_path": midi_path,
+            "split": None,  # filled below
+            "annot_file": chord_path
+        })
+
+    if not rows:
+        clog.warning(f"No POP909 MIDI files with chord annotations found in {data_dir}")
+        return pd.DataFrame(columns=unconditional_datacols)
+
+    # Train split (same logic as parse_any_data)
+    random.seed(RD_SEED)
+    random.shuffle(rows)
+
+    n_total = len(rows)
+    n_train = int(n_total * train_val_test_split[0])
+    n_val = int(n_total * train_val_test_split[1])
+
+    splits = (
+            ["train"] * n_train +
+            ["validation"] * n_val +
+            ["test"] * (n_total - n_train - n_val)
+    )
+
+    for r, s in zip(rows, splits):
+        r["split"] = s
+
+    df = pd.DataFrame(rows, columns=unconditional_datacols)
     return df
 
 
@@ -278,10 +347,6 @@ def integrate_maestro_asap(mstro, asap, train_val_test_split=(0.8, 0.1, 0.1), ch
     return combined_df
 
 
-def parse_pop909_dataset(data_dir):
-    pass
-
-
 class MIDIData:
     # Integrate different datasets into one
     def __init__(self, data_dir_dict: dict, train_val_test_split=(0.8, 0.1, 0.1), check_duplicate=False):
@@ -335,7 +400,24 @@ class ChordMIDIData(MIDIData):
         self.data = self._collect_data()
 
     def _collect_data(self):
-        raise NotImplementedError
+        # Build chord-conditioned only using POP909.
+
+        data = pd.DataFrame(columns=unconditional_datacols)
+
+        pop_keys = [k for k in self.data_dir_dict.keys() if k.lower() == "pop909"]
+        if not pop_keys:
+            raise ValueError("ChordMIDIData requires a 'pop909' entry in data_dir_dict")
+
+        pop_key = pop_keys[0]
+        pop_dir = self.data_dir_dict[pop_key]
+
+        pop_data = parse_pop909_dataset(pop_dir, self.train_val_test_split)
+
+        pop_data = pop_data.reindex(columns=unconditional_datacols)
+        data = pd.concat([data, pop_data], ignore_index=True)
+
+        data["pid"] = range(len(data))
+        return data
 
 
 class ScoreMIDIData(MIDIData):
@@ -368,6 +450,155 @@ class UnconditionalFeatureExtractor(BaseFeatureExtractor):
     def __call__(self, row_data):
         note_sequence = get_note_sequence_from_midi(row_data['midi_path'])
         return midi_to_tap(note_sequence)
+
+
+class ChordFeatureExtractor(BaseFeatureExtractor):
+    """
+    - Chord representation:
+        * Parse chord label into (root_pc, quality_id)
+            root_pc: 0-11, C=0, C#=1, ..., B=11
+            quality_id: fixed vocabulary order:
+                ["maj", "min", "dim", "aug", "sus", "maj7", "min7", "7", "other"]
+        * Structured integer chord_id:
+                chord_id = quality_id * 12 + root_pc
+          Special "no chord" (N) ID:
+                N_ID = NUM_ROOTS * NUM_QUALITIES
+
+    - Returned features:
+        features_with_chord.shape = (N, 5)
+    """
+
+    def __init__(self):
+        super().__init__()
+
+    def _normalize_quality(self, raw_qual: str) -> str:
+        if raw_qual is None or raw_qual == "":
+            return "maj"
+
+        # Drop inversion like 'maj7/5'
+        raw = raw_qual.split("/")[0].lower()
+
+        if raw in ("maj",):
+            return "maj"
+        if raw in ("min", "m"):
+            return "min"
+        if "dim" in raw:
+            return "dim"
+        if "aug" in raw:
+            return "aug"
+        if raw.startswith("sus"):
+            return "sus"
+        if "maj7" in raw or "maj9" in raw:
+            return "maj7"
+        if raw in ("min7", "m7"):
+            return "min7"
+        if raw.endswith("7") or raw in ("9", "11", "13"):
+            # not sure here
+            return "7"
+        return "other"
+
+    def _parse_chord_label(self, chord_label: str) -> int:
+        if chord_label is None:
+            return ChordConstants.N_ID
+
+        chord_label = chord_label.strip()
+        if chord_label == "" or chord_label.upper() == "N":
+            return ChordConstants.N_ID
+        if ":" in chord_label:
+            root_str, qual_str = chord_label.split(":", 1)
+        else:
+            # If no colon, assume major
+            root_str, qual_str = chord_label, "maj"
+
+        root_str = root_str.strip()
+        qual_str = qual_str.strip()
+
+        root_pc = ChordConstants.NOTE_TO_PC.get(root_str)
+        if root_pc is None:
+            return ChordConstants.N_ID
+
+        qual_norm = self._normalize_quality(qual_str)
+        qual_id = ChordConstants.QUALITY_TO_ID[qual_norm]
+
+        chord_id = qual_id * ChordConstants.NUM_ROOTS + root_pc
+        return chord_id
+
+    def _load_chord_segments(self, chord_path: str):
+        """
+        Each line: start_time end_time chord_name
+        """
+        segments = []
+        with open(chord_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = re.split(r"\s+", line)
+                if len(parts) < 3:
+                    continue
+                try:
+                    start = float(parts[0])
+                    end = float(parts[1])
+                except ValueError:
+                    continue
+                chord_name = parts[2]
+                segments.append((start, end, chord_name))
+
+        segments.sort(key=lambda x: x[0])
+        return segments
+
+    def _align_chords_to_onsets(self, onsets: np.ndarray, segments):
+        """
+        For each note onset t, find which chord segment [start, end)
+        it falls into, and return the corresponding chord_id.
+        If no segment covers t, assign N_ID.
+        """
+        n = len(onsets)
+        chord_ids = np.full(n, ChordConstants.N_ID, dtype=np.int32)
+
+        if not segments:
+            return chord_ids
+
+        seg_idx = 0
+        n_seg = len(segments)
+
+        for i, t in enumerate(onsets):
+
+            while seg_idx < n_seg - 1 and t >= segments[seg_idx][1]:
+                seg_idx += 1
+
+            start, end, label = segments[seg_idx]
+            if start <= t < end:
+                chord_ids[i] = self._parse_chord_label(label)
+            else:
+                chord_ids[i] = ChordConstants.N_ID
+
+        return chord_ids
+
+    def __call__(self, row_data):
+        """
+        Returns:
+            features_with_chord: (N, 5) = [tap_features(4 dims), chord_id]
+            labels:              (N,)   = pitch targets
+        """
+
+        notes = get_note_sequence_from_midi(row_data["midi_path"])
+        features, labels = midi_to_tap(notes)
+        onsets = notes[:, 1]  # onset time in seconds
+
+        chord_path = row_data.get("annot_file", None)
+        if isinstance(chord_path, str) and os.path.exists(chord_path):
+            segments = self._load_chord_segments(chord_path)
+            chord_ids = self._align_chords_to_onsets(onsets, segments)
+        else:
+            clog.warning(f"No chord annotation file found for MIDI: {row_data.get('midi_path', 'unknown')}")
+            chord_ids = np.full(len(onsets), ChordConstants.N_ID, dtype=np.int32)
+
+        # Append chord_id as a new feature column
+        chord_ids = chord_ids.astype(float).reshape(-1, 1)
+        features_with_chord = np.concatenate([features, chord_ids], axis=1)
+
+        return features_with_chord, labels
 
 
 class RangeData(BaseFeatureExtractor):
@@ -407,6 +638,7 @@ data_class_map = {
 
 feature_extractor_map = {
     'unconditional': UnconditionalFeatureExtractor(),
+    'chord': ChordFeatureExtractor(),
     'range': RangeData(),
 }
 
@@ -548,22 +780,28 @@ class FeaturePreparation:
         prepare_split('validation')
         prepare_split('test')
 
+
+        if self.feature == 'chord':
+            extractor = feature_extractor_map[self.feature]
+            if hasattr(extractor, "chord2id"):
+                vocab_path = self.save_dir / f"{self.feature}-chord_vocab.pkl"
+                with open(vocab_path, "wb") as f:
+                    pickle.dump(extractor.chord2id, f)
+                clog.info(f"Saved chord vocabulary to {vocab_path}")
+
         clog.info("\x1B[34m[Info]\033[0m saved all feature")
 
 
 def extract_unconditional_feature():
-    mstr_path = '/Users/kurono/Documents/code/data/maestro-v3.0.0'
-    asap_path = '/Users/kurono/Documents/code/data/acpas/asap'
-
     datasets = {
-        'maestro': '/Users/kurono/Documents/code/data/maestro-v3.0.0',
-        'asap': '/Users/kurono/Documents/code/data/acpas/asap',
-        'pop909': '/Users/kurono/Documents/code/data/POP909-Dataset-master', # require further processing
-        'hannds': '/Users/kurono/Documents/code/data/hannds-master'
+        'maestro': dotenv_config['MAESTRO_PATH'],
+        'asap': dotenv_config['ASAP_PATH'],
+        'pop909': dotenv_config['POP909_PATH'],
+        'hannds': dotenv_config['HANNDS_PATH']
     }
 
-    fp = FeaturePreparation(feature='unconditional',
-                            save_dir='/Users/kurono/Desktop/10701 final/tap`_the_music/output',
+    fp = FeaturePreparation(feature=dotenv_config['FEATURE_TYPE'],
+                            save_dir=dotenv_config['OUTPUT_DIR'],
                             data_dir_dict=datasets,
                             check_duplicate=True)
     # fp.extract_meta()
@@ -574,9 +812,30 @@ def extract_unconditional_feature():
 
     print('hi')
 
+def extract_chord_feature():
+    datasets = {
+        'pop909': dotenv_config['POP909_PATH']
+    }
+
+    fp = FeaturePreparation(
+        feature=dotenv_config['FEATURE_TYPE'],
+        save_dir=dotenv_config['DATA_DIR'],
+        data_dir_dict=datasets,
+        check_duplicate=False
+    )
+
+    fp.extract_meta()
+
+    fp.load_meta()
+
+    fp.print_statistics()
+
+    fp.prepare_features()
+
 
 def main():
     extract_unconditional_feature()
+    # extract_chord_feature()
 
 
 if __name__ == "__main__":

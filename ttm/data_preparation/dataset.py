@@ -11,13 +11,15 @@ import numpy as np
 import torch
 from torch.utils.data.dataset import Dataset
 
-from ttm.config import MAX_PIANO_PITCH, RD_SEED, MIN_PIANO_PITCH, config
+from ttm.config import MAX_PIANO_PITCH, RD_SEED, MIN_PIANO_PITCH, config, dotenv_config
 from ttm.data_preparation.data_augmentation import (
     BaseDataAugmentation,
     RangeDataAugmentation,
     UnconditionalDataAugmentation,
     ClusterAugmentation,
 )
+from ttm.data_preparation.data_augmentation import ChordDataAugmentation
+from ttm.data_preparation.utils import ChordConstants
 
 random.seed(RD_SEED)
 
@@ -57,9 +59,18 @@ class BaseDataset(Dataset):
         note_sequence = smpl[0][start_idx:end_idx]
         annotation = smpl[1][start_idx: end_idx]
 
+        n_feats = note_sequence.shape[1]
+        pad_row = np.zeros((1, n_feats), dtype=note_sequence.dtype)
+        pad_row[0, 0] = MAX_PIANO_PITCH + 1
+
+        if n_feats > 4:
+            # chord feature, give the pad the non chord id
+            pad_row[0, 4] = float(ChordConstants.N_ID)
+
         # Pad sos
-        note_sequence = np.concatenate([np.array([[MAX_PIANO_PITCH + 1, 0, 0, 0]]), note_sequence], axis=0)
+        note_sequence = np.concatenate([pad_row, note_sequence], axis=0)
         annotation = np.concatenate([np.array([smpl[0][start_idx][0]]), annotation], axis=0)
+
         if self.split != 'test':
             note_sequence = note_sequence[:self.max_length]
             annotation = annotation[:self.max_length]
@@ -91,6 +102,37 @@ class UnconditionalDataset(BaseDataset):
 
             # Also pad labels if needed
             label_pad = np.full(pad_len, 88)  # pad label as well
+            labels = np.concatenate([labels, label_pad])
+
+        return torch.tensor(noteseq), torch.tensor(labels)
+
+
+class ChordDataset(BaseDataset):
+    def __init__(self, feature_folder, split, feature_type='chord'):
+
+        super().__init__(feature_folder, split, feature_type)
+        self.data_aug = ChordDataAugmentation()
+
+    def __getitem__(self, item):
+        noteseq, labels = self._get_data(item)
+
+        noteseq[:, 0] -= MIN_PIANO_PITCH
+        labels = labels - MIN_PIANO_PITCH
+
+        if self.split != 'test' and len(noteseq) < self.max_length:
+            pad_len = self.max_length - len(noteseq)
+            D = noteseq.shape[1]
+
+            pad_row = np.zeros((1, D), dtype=noteseq.dtype)
+            pad_row[0, 0] = 88
+
+            if D > 4:
+                pad_row[0, 4] = float(ChordConstants.N_ID)
+
+            pad_block = np.repeat(pad_row, pad_len, axis=0)
+            noteseq = np.concatenate([noteseq, pad_block], axis=0)
+
+            label_pad = np.full(pad_len, 88)
             labels = np.concatenate([labels, label_pad])
 
         return torch.tensor(noteseq, dtype=torch.float32), torch.tensor(labels, dtype=torch.long)
@@ -135,7 +177,8 @@ class RangeDataset(BaseDataset):
         annotation = labels[start_idx:end_idx]
 
         # Pad sos
-        range_value = piece_range[1] if isinstance(piece_range, tuple) else (piece_range if piece_range is not None else 0)
+        range_value = piece_range[1] if isinstance(piece_range, tuple) else (
+            piece_range if piece_range is not None else 0)
         pad_row = np.array([[MAX_PIANO_PITCH + 1, 0, 0, 0, range_value]])
         note_sequence = np.concatenate([pad_row, note_sequence], axis=0)
         annotation = np.concatenate([np.array([labels[start_idx][0]]), annotation], axis=0)
@@ -264,24 +307,19 @@ class ClusterDataset(BaseDataset):
             label_pad = np.full(pad_len, 88)
             annotation = np.concatenate([annotation, label_pad])
 
-        return torch.tensor(note_sequence, dtype=torch.float32), torch.tensor(annotation, dtype=torch.long), (median_scalar, left_med, right_med)
+        return torch.tensor(note_sequence, dtype=torch.float32), torch.tensor(annotation, dtype=torch.long), (
+            median_scalar, left_med, right_med)
 
 
 def main():
-    # Simple smoke test for local features folder relative to repo root
-    from pathlib import Path
-    features_dir = Path(__file__).resolve().parents[2] / "features"
-    if not features_dir.exists():
-        raise FileNotFoundError(f"Features directory not found at {features_dir}")
-
     data = UnconditionalDataset(
-        str(features_dir),
-        'train',
-        feature_type='unconditional'
+        feature_folder=dotenv_config['FEATURE_FOLDER'],
+        split=dotenv_config['SPLIT'],
+        feature_type=dotenv_config['FEATURE_TYPE']
     )
-    # Fetch one item to ensure loading works
-    _ = data.__getitem__(0)
-    print("Loaded one sample from", features_dir)
+    for i in range(1):
+        item = data.__getitem__(i)
+        print(item, item[0].shape, item[1].shape)
 
 
 if __name__ == "__main__":

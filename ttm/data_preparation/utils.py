@@ -13,9 +13,31 @@ import numpy as np
 import pretty_midi as pm
 from tqdm import tqdm
 
-from ttm.config import MAX_PIANO_PITCH
+from ttm.config import MAX_PIANO_PITCH, dotenv_config
 from ttm.utils import clog
 
+class ChordConstants:
+    NOTE_TO_PC = {
+        "C": 0, "B#": 0,
+        "C#": 1, "Db": 1,
+        "D": 2,
+        "D#": 3, "Eb": 3,
+        "E": 4, "Fb": 4,
+        "F": 5, "E#": 5,
+        "F#": 6, "Gb": 6,
+        "G": 7,
+        "G#": 8, "Ab": 8,
+        "A": 9,
+        "A#": 10, "Bb": 10,
+        "B": 11, "Cb": 11,
+    }
+
+    QUALITY_ORDER = ["maj", "min", "dim", "aug", "sus", "maj7", "min7", "7", "other"]
+    QUALITY_TO_ID = {q: i for i, q in enumerate(QUALITY_ORDER)}
+
+    NUM_ROOTS = 12
+    NUM_QUALITIES = len(QUALITY_ORDER)
+    N_ID = NUM_ROOTS * NUM_QUALITIES  # special ID for 'N' (no chord)
 
 def collect_midi_files(root_dir):
     """Recursively collect all .mid/.midi files under a directory."""
@@ -142,8 +164,8 @@ def main():
     # notes = get_note_sequence_from_midi('/Users/kurono/Documents/code/data/acpas/asap/Bach/Fugue/bwv_846/Shi05M.mid')
     # taps, labels = midi_to_tap(notes)
 
-    duplicates = find_duplicate_midi(collect_midi_files('/Users/kurono/Documents/code/data/hannds-master'),
-                                     collect_midi_files('/Users/kurono/Documents/code/data/maestro-v3.0.0'))
+    duplicates = find_duplicate_midi(collect_midi_files(dotenv_config['HANNDS_PATH']),
+                                     collect_midi_files(dotenv_config['MAESTRO_PATH']))
     print(duplicates)
 
 
