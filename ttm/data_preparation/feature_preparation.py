@@ -170,14 +170,14 @@ def parse_pop909_dataset(data_dir, train_val_test_split=(0.8, 0.1, 0.1)):
             continue
 
         piece_name = idx_dir.name
-        composer = "POP909"         # POP909 do not have composer
+        composer = "POP909"  # POP909 do not have composer
 
         rows.append({
             "source": "pop909",
             "composer": composer,
             "piece_name": piece_name,
             "midi_path": midi_path,
-            "split": None,          # filled below
+            "split": None,  # filled below
             "annot_file": chord_path
         })
 
@@ -194,9 +194,9 @@ def parse_pop909_dataset(data_dir, train_val_test_split=(0.8, 0.1, 0.1)):
     n_val = int(n_total * train_val_test_split[1])
 
     splits = (
-        ["train"] * n_train +
-        ["validation"] * n_val +
-        ["test"] * (n_total - n_train - n_val)
+            ["train"] * n_train +
+            ["validation"] * n_val +
+            ["test"] * (n_total - n_train - n_val)
     )
 
     for r, s in zip(rows, splits):
@@ -347,7 +347,6 @@ def integrate_maestro_asap(mstro, asap, train_val_test_split=(0.8, 0.1, 0.1), ch
     return combined_df
 
 
-
 class MIDIData:
     # Integrate different datasets into one
     def __init__(self, data_dir_dict: dict, train_val_test_split=(0.8, 0.1, 0.1), check_duplicate=False):
@@ -380,6 +379,7 @@ class UnconditionalMIDIData(MIDIData):
         other_datasets = [k for k in self.data_dir_dict.keys() if k.lower() not in ['maestro', 'asap']]
         assert len(maestro_asap) == 0 or len(maestro_asap) == 2
         if maestro_asap:
+            # Maestro and asap have overlapping peprformances and therefore needs to be processed together
             mstro_dir = maestro_asap[0] if 'maestro' in maestro_asap[0].lower() else maestro_asap[1]
             asap_dir = maestro_asap[0] if 'asap' in maestro_asap[0].lower() else maestro_asap[1]
             mstro_data = parse_maestro_data(mstro_dir)
@@ -388,8 +388,11 @@ class UnconditionalMIDIData(MIDIData):
                                                         self.check_duplicate)
             data = pd.concat([data, integrated_dataset[unconditional_datacols]], ignore_index=True)
         for source in other_datasets:
-            sub_data = parse_any_data(self.data_dir_dict[source], source, self.train_val_test_split)
-            sub_data = sub_data.reindex(columns=unconditional_datacols)
+            if 'pop909' in source.lower():
+                sub_data = parse_pop909_dataset(self.data_dir_dict[source])
+            else:
+                sub_data = parse_any_data(self.data_dir_dict[source], source, self.train_val_test_split)
+                sub_data = sub_data.reindex(columns=unconditional_datacols)
             data = pd.concat([data, sub_data[unconditional_datacols]], ignore_index=True)
         data['pid'] = range(len(data))
         return data
@@ -452,6 +455,7 @@ class UnconditionalFeatureExtractor(BaseFeatureExtractor):
         note_sequence = get_note_sequence_from_midi(row_data['midi_path'])
         return midi_to_tap(note_sequence)
 
+
 class ChordFeatureExtractor(BaseFeatureExtractor):
     """
     - Chord representation:
@@ -470,7 +474,6 @@ class ChordFeatureExtractor(BaseFeatureExtractor):
 
     def __init__(self):
         super().__init__()
-
 
     def _normalize_quality(self, raw_qual: str) -> str:
         if raw_qual is None or raw_qual == "":
@@ -576,7 +579,6 @@ class ChordFeatureExtractor(BaseFeatureExtractor):
 
         return chord_ids
 
-
     def __call__(self, row_data):
         """
         Returns:
@@ -586,7 +588,7 @@ class ChordFeatureExtractor(BaseFeatureExtractor):
 
         notes = get_note_sequence_from_midi(row_data["midi_path"])
         features, labels = midi_to_tap(notes)
-        onsets = notes[:, 1]   # onset time in seconds
+        onsets = notes[:, 1]  # onset time in seconds
 
         chord_path = row_data.get("annot_file", None)
         if isinstance(chord_path, str) and os.path.exists(chord_path):
@@ -601,6 +603,7 @@ class ChordFeatureExtractor(BaseFeatureExtractor):
         features_with_chord = np.concatenate([features, chord_ids], axis=1)
 
         return features_with_chord, labels
+
 
 data_class_map = {
     'unconditional': UnconditionalMIDIData,
@@ -727,7 +730,6 @@ class FeaturePreparation:
         prepare_split('validation')
         prepare_split('test')
 
-
         if self.feature == 'chord':
             extractor = feature_extractor_map[self.feature]
             if hasattr(extractor, "chord2id"):
@@ -743,7 +745,7 @@ def extract_unconditional_feature():
     datasets = {
         'maestro': dotenv_config['MAESTRO_PATH'],
         'asap': dotenv_config['ASAP_PATH'],
-        'pop909': dotenv_config['POP909_PATH'],
+        # 'pop909': dotenv_config['POP909_PATH'],
         'hannds': dotenv_config['HANNDS_PATH']
     }
 
@@ -751,13 +753,14 @@ def extract_unconditional_feature():
                             save_dir=dotenv_config['OUTPUT_DIR'],
                             data_dir_dict=datasets,
                             check_duplicate=True)
-    # fp.extract_meta()
+    fp.extract_meta()
     fp.load_meta()
     fp.print_statistics()
     # would be good to stats by source
-    # fp.prepare_features()
+    fp.prepare_features()
 
     print('hi')
+
 
 def extract_chord_feature():
     datasets = {
@@ -780,9 +783,31 @@ def extract_chord_feature():
     fp.prepare_features()
 
 
+def extract_augmented_unconditional_feature():
+    datasets = {
+        'pop909': dotenv_config['POP909_PATH'],
+        'maestro': dotenv_config['MAESTRO_PATH'],
+        'asap': dotenv_config['ASAP_PATH'],
+        'hannds': dotenv_config['HANNDS_PATH']
+    }
+
+    fp = FeaturePreparation(
+        feature=dotenv_config['FEATURE_TYPE'],
+        save_dir=dotenv_config['DATA_DIR'],
+        data_dir_dict=datasets,
+        check_duplicate=True
+    )
+
+    fp.extract_meta()
+    fp.load_meta()
+    fp.print_statistics()
+    fp.prepare_features()
+
+
 def main():
-    # extract_unconditional_feature()
-    extract_chord_feature()
+    extract_unconditional_feature()
+    # extract_chord_feature()
+    # extract_augmented_unconditional_feature()
 
 
 if __name__ == "__main__":
