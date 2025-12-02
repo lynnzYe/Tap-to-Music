@@ -7,6 +7,8 @@ Brief: Dataset classes for POP909 data with extended features
        Two dataset classes available:
        - HandDataset: For 5-feature data (pitch, dt, dur, vel, hand)
        - WindowDataset: For 5-feature data (pitch, dt, dur, vel, window_avg)
+
+       Reference: https://github.com/lynnzYe/Tap-to-Music/blob/9bf3016803e6038b302265dabbd68414c9a71b0a/ttm/data_preparation/dataset.py
 """
 import os.path
 import pickle

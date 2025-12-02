@@ -7,6 +7,8 @@ Brief: PyTorch Lightning DataModules for POP909 datasets
        Two data modules available:
        - HandDataModule: For 5-feature hand data (pitch, dt, dur, vel, hand)
        - WindowDataModule: For 5-feature window data (pitch, dt, dur, vel, window_avg)
+
+       Reference: https://github.com/lynnzYe/Tap-to-Music/blob/9bf3016803e6038b302265dabbd68414c9a71b0a/ttm/data_preparation/data_module.py
 """
 import pytorch_lightning as pl
 import torch

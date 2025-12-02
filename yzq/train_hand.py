@@ -8,7 +8,7 @@ import warnings
 from pathlib import Path
 
 import pytorch_lightning as pl
-from pytorch_lightning.loggers import WandbLogger, CSVLogger
+from pytorch_lightning.loggers import WandbLogger
 
 from ttm.config import config, model_config
 from yzq.data_module import HandDataModule
@@ -48,15 +48,12 @@ def train(args):
         freeze_backbone=args.freeze_backbone
     )
     
-    # Logger
-    if args.use_wandb:
-        logger = WandbLogger(
-            project='tap-to-music-hand',
-            name=args.name,
-            save_dir=args.output_dir,
-        )
-    else:
-        logger = CSVLogger(args.output_dir, name='hand_film')
+    # Logger (WandB)
+    logger = WandbLogger(
+        project='tap-to-music-hand',
+        name=args.name,
+        save_dir=args.output_dir,
+    )
     
     # Callbacks
     callbacks = configure_callbacks(
@@ -105,7 +102,7 @@ def main():
     
     # Paths
     parser.add_argument('--pretrained_path', type=str, 
-                        default='uc/last-trained-on-maestro-asap.ckpt',
+                        default='uc/unconditional-epoch=979-val_loss=2.5250-val_top5_acc=0.6619.ckpt',
                         help='Path to pretrained UCModule checkpoint')
     parser.add_argument('--data_dir', type=str, 
                         default='yzq/output',
@@ -141,8 +138,6 @@ def main():
     # Other
     parser.add_argument('--device', type=str, default='auto',
                         help='Device (auto, cpu, gpu, mps)')
-    parser.add_argument('--use_wandb', action='store_true',
-                        help='Use Weights & Biases logging')
     parser.add_argument('--name', type=str, default='hand_film',
                         help='Run name for wandb')
     

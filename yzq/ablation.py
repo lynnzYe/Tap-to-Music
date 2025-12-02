@@ -7,7 +7,14 @@ Compares:
 3. Window-only FiLM (condition on window_avg pitch)
 4. Hand + Window FiLM (condition on both)
 
-Author: Generated for 10701 Project
+Author: YZQ
+Created on: 2025/12/02
+Brief: Ablation study for Hand + Window FiLM conditioning
+       Compares:
+       - Unconditional baseline (no conditioning)
+       - Hand-only FiLM (condition on left/right hand)
+       - Window-only FiLM (condition on window_avg pitch)
+       - Hand + Window FiLM (condition on both)
 """
 import argparse
 import json
@@ -42,7 +49,7 @@ warnings.filterwarnings('ignore')
 class CombinedTapLSTM(nn.Module):
     """
     FiLM-conditioned LSTM that uses BOTH hand and window_avg features.
-    Applies FiLM conditioning from both sources (additive or multiplicative combination).
+    Applies FiLM conditioning from both sources using additive combination.
     """
     def __init__(
         self,
@@ -64,8 +71,6 @@ class CombinedTapLSTM(nn.Module):
         film_hidden_dim=128,
         multi_layer_film=True,
         cond_dropout=0.1,
-        # Combination method
-        combination='additive',  # 'additive', 'multiplicative', 'concat'
     ):
         super().__init__()
         
@@ -84,7 +89,6 @@ class CombinedTapLSTM(nn.Module):
         
         self.hidden = hidden
         self.linear_dim = linear_dim
-        self.combination = combination
         self.multi_layer_film = multi_layer_film
         
         # Hand embedding
@@ -94,12 +98,6 @@ class CombinedTapLSTM(nn.Module):
         # Window projection (continuous -> embedding)
         self.window_proj = nn.Linear(1, window_emb_dim)
         self.window_dropout = nn.Dropout(cond_dropout)
-        
-        # Combined conditioning dimension
-        if combination == 'concat':
-            combined_dim = hand_emb_dim + window_emb_dim
-        else:
-            combined_dim = hand_emb_dim  # Will use separate FiLM layers
         
         # FiLM MLP for hand
         self.hand_film_mlp = nn.Sequential(
@@ -197,15 +195,9 @@ class CombinedTapLSTM(nn.Module):
             window_input_params = self.window_input_film(window_emb)
             w_gamma_in, w_beta_in = torch.chunk(window_input_params, 2, dim=-1)
             
-            # Combine: additive FiLM
-            # gamma_combined = gamma_hand * gamma_window (multiplicative)
-            # beta_combined = beta_hand + beta_window (additive)
-            if self.combination == 'multiplicative':
-                gamma_in = h_gamma_in * w_gamma_in
-                beta_in = h_beta_in + w_beta_in
-            else:  # additive
-                gamma_in = (h_gamma_in + w_gamma_in) / 2
-                beta_in = (h_beta_in + w_beta_in) / 2
+            # Additive combination of FiLM parameters
+            gamma_in = (h_gamma_in + w_gamma_in) / 2
+            beta_in = (h_beta_in + w_beta_in) / 2
             
             x_linear = gamma_in * x_linear + beta_in
         
@@ -219,13 +211,9 @@ class CombinedTapLSTM(nn.Module):
         window_film_params = self.window_film_mlp(window_emb)
         w_gamma, w_beta = torch.chunk(window_film_params, 2, dim=-1)
         
-        # Combine output FiLM
-        if self.combination == 'multiplicative':
-            gamma = h_gamma * w_gamma
-            beta = h_beta + w_beta
-        else:  # additive
-            gamma = (h_gamma + w_gamma) / 2
-            beta = (h_beta + w_beta) / 2
+        # Additive combination of FiLM parameters
+        gamma = (h_gamma + w_gamma) / 2
+        beta = (h_beta + w_beta) / 2
         
         out_cond = gamma * out_lstm + beta
         
@@ -278,7 +266,6 @@ class CombinedFiLMModule(pl.LightningModule):
                 film_hidden_dim=m_config.get('film_hidden_dim', 128),
                 multi_layer_film=m_config.get('multi_layer_film', True),
                 cond_dropout=m_config.get('cond_dropout', 0.1),
-                combination=m_config.get('combination', 'additive'),
             )
             
             if freeze_backbone:
@@ -437,14 +424,24 @@ class CombinedFiLMModule(pl.LightningModule):
 # ============================================================
 
 def compute_window_avg(pitches, window_size):
-    """Compute causal window average."""
-    window_avg = np.zeros(len(pitches), dtype=float)
-    for i in range(len(pitches)):
-        if i == 0:
-            window_avg[i] = pitches[0]
+    """Compute bidirectional window average (past n + future n)."""
+    n = len(pitches)
+    window_avg = np.zeros(n, dtype=float)
+    
+    for i in range(n):
+        past_start = max(0, i - window_size)
+        future_end = min(n, i + 1 + window_size)
+        
+        past_notes = pitches[past_start:i]
+        future_notes = pitches[i+1:future_end]
+        
+        combined = np.concatenate([past_notes, future_notes])
+        
+        if len(combined) == 0:
+            window_avg[i] = pitches[i]
         else:
-            start_idx = max(0, i - window_size)
-            window_avg[i] = np.mean(pitches[start_idx:i])
+            window_avg[i] = np.mean(combined)
+    
     return window_avg
 
 
@@ -644,17 +641,10 @@ def run_ablation(args):
             'data_module_class': 'window',
             'description': 'Window FiLM only (pitch context conditioning)',
         },
-        'combined_additive': {
+        'combined': {
             'model_class': 'CombinedFiLMModule',
             'data_module_class': 'combined',
-            'combination': 'additive',
             'description': 'Combined Hand+Window FiLM (additive)',
-        },
-        'combined_multiplicative': {
-            'model_class': 'CombinedFiLMModule',
-            'data_module_class': 'combined',
-            'combination': 'multiplicative',
-            'description': 'Combined Hand+Window FiLM (multiplicative)',
         },
     }
     
@@ -686,7 +676,7 @@ def run_ablation(args):
                                    batch_size=args.batch_size, num_workers=args.num_workers)
             elif config['data_module_class'] == 'window':
                 from yzq.data_module import WindowDataModule
-                dm = WindowDataModule(args.data_dir, feature_type='pop909window8',
+                dm = WindowDataModule(args.data_dir, feature_type='pop909window',
                                      batch_size=args.batch_size, num_workers=args.num_workers,
                                      window_size=8)
             else:  # combined
@@ -707,9 +697,9 @@ def run_ablation(args):
             }
             
             if config['model_class'] == 'HandFiLMModule':
-                model = HandFiLMModule.from_pretrained_uc(
-                    pretrained_path=args.pretrained_path,
+                model = HandFiLMModule(
                     m_config=m_config,
+                    pretrained_path=args.pretrained_path,
                     freeze_backbone=args.freeze_backbone
                 )
             elif config['model_class'] == 'WindowFiLMModule':
@@ -719,7 +709,6 @@ def run_ablation(args):
                     freeze_backbone=args.freeze_backbone
                 )
             else:  # CombinedFiLMModule
-                m_config['combination'] = config.get('combination', 'additive')
                 model = CombinedFiLMModule(
                     m_config=m_config,
                     pretrained_path=args.pretrained_path,
@@ -818,7 +807,7 @@ def main():
     parser.add_argument('--data_dir', type=str, default='yzq/output')
     parser.add_argument('--output_dir', type=str, default='yzq/checkpoints/ablation')
     parser.add_argument('--pretrained_path', type=str, 
-                        default='uc/last-trained-on-maestro-asap.ckpt')
+                        default='uc/unconditional-epoch=979-val_loss=2.5250-val_top5_acc=0.6619.ckpt')
     parser.add_argument('--hannds_checkpoint', type=str,
                         default='hannds/pretrained/model_checkpoint.pt')
     parser.add_argument('--max_epochs', type=int, default=20)

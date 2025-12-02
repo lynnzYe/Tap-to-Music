@@ -7,6 +7,8 @@ Brief: Data augmentation classes for POP909 dataset features
        Two augmentation classes available:
        - HandDataAugmentation: For 5-feature data (pitch, dt, dur, vel, hand)
        - ClusterDataAugmentation: For 5-feature data (pitch, dt, dur, vel, window_avg)
+       
+       Reference: https://github.com/lynnzYe/Tap-to-Music/blob/9bf3016803e6038b302265dabbd68414c9a71b0a/ttm/data_preparation/data_augmentation.py
 """
 import random
 
@@ -28,28 +30,36 @@ DEFAULT_WINDOW_SIZE = 8
 
 def compute_window_avg(pitches, window_size=DEFAULT_WINDOW_SIZE):
     """
-    Compute the rolling average of previous pitches for each position.
+    Compute the bidirectional window average of pitches for each position.
+    Uses past n and future n notes (excluding current position to avoid label leakage).
     
     Args:
         pitches: np.ndarray of shape (N,) containing pitch values
-        window_size: Number of previous notes to include in average
+        window_size: Number of notes to include before AND after current position
     
     Returns:
         np.ndarray of shape (N,) with window averages
-        - For position i, computes mean of pitches[max(0, i-window_size):i]
-        - First position uses first pitch as default
     """
     n = len(pitches)
     window_avg = np.zeros(n, dtype=float)
     
     for i in range(n):
-        if i == 0:
-            # First position: use first pitch as placeholder (no history)
-            window_avg[i] = pitches[0]
+        # Past window: pitches[max(0, i-window_size):i]
+        # Future window: pitches[i+1:min(n, i+1+window_size)]
+        past_start = max(0, i - window_size)
+        future_end = min(n, i + 1 + window_size)
+        
+        # Combine past and future notes (exclude current position i)
+        past_notes = pitches[past_start:i]
+        future_notes = pitches[i+1:future_end]
+        
+        combined = np.concatenate([past_notes, future_notes])
+        
+        if len(combined) == 0:
+            # Edge case: single note, no neighbors
+            window_avg[i] = pitches[i]
         else:
-            # Compute average of previous window_size notes (or all previous if less)
-            start_idx = max(0, i - window_size)
-            window_avg[i] = np.mean(pitches[start_idx:i])
+            window_avg[i] = np.mean(combined)
     
     return window_avg
 

@@ -3,7 +3,13 @@ Generation example for Hand and Window FiLM models.
 Generates music from a random MIDI file and outputs both input and generated results
 as MIDI and WAV files.
 
-Author: Generated for 10701 Project
+Author: YZQ
+Created on: 2025/12/02
+Brief: Generation example for Hand and Window FiLM models
+       Generates music from a random MIDI file and outputs both input and generated results
+       as MIDI and WAV files.
+
+       Reference: https://github.com/lynnzYe/Tap-to-Music/blob/9bf3016803e6038b302265dabbd68414c9a71b0a/ttm/generate_example.py
 """
 import argparse
 import os

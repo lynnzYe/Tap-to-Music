@@ -24,14 +24,24 @@ WINDOW_SIZES = [2, 4, 8, 16, 32]
 
 
 def compute_window_avg(labels, window_size):
-    """Compute causal window average of pitches."""
-    window_avg = np.zeros(len(labels), dtype=float)
-    for i in range(len(labels)):
-        if i == 0:
-            window_avg[i] = labels[0]
+    """Compute bidirectional window average of pitches (past n + future n)."""
+    n = len(labels)
+    window_avg = np.zeros(n, dtype=float)
+    
+    for i in range(n):
+        past_start = max(0, i - window_size)
+        future_end = min(n, i + 1 + window_size)
+        
+        past_notes = labels[past_start:i]
+        future_notes = labels[i+1:future_end]
+        
+        combined = np.concatenate([past_notes, future_notes])
+        
+        if len(combined) == 0:
+            window_avg[i] = labels[i]
         else:
-            start_idx = max(0, i - window_size)
-            window_avg[i] = np.mean(labels[start_idx:i])
+            window_avg[i] = np.mean(combined)
+    
     return window_avg
 
 

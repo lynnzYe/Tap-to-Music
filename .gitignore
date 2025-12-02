@@ -222,6 +222,8 @@ __marimo__/
 yzq/checkpoints/
 yzq/output/
 yzq/generated_examples/
+yzq/hyperparam_sweep.py
+yzq/test_window_sizes.py
 
 # Dataset folders
 POP909-Dataset/
