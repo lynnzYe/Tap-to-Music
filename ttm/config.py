@@ -8,8 +8,10 @@ from dotenv import load_dotenv
 
 LOG_LEVEL = logging.DEBUG
 DOTENV_PATH = os.path.join(Path(__file__).resolve().parent, ".env")
-assert os.path.exists(DOTENV_PATH), "Create .env file to define your paths (data dir, model ckpt etc.)"
-load_dotenv(os.path.join(Path(__file__).resolve().parent, ".env"))
+if os.path.exists(DOTENV_PATH):
+    load_dotenv(DOTENV_PATH)
+else:
+    warnings.warn(f".env file not found at {DOTENV_PATH}. Some features may require it.")
 dotenv_config = {key: os.getenv(key) for key in [
     "FEATURE_FOLDER", "FEATURE_TYPE", "SPLIT", "DATA_DIR", "TRAIN_NAME", "OUTPUT_DIR",
     "DEBUG_DIR", "CKPT_PATH", "MAESTRO_PATH", "ASAP_PATH", "POP909_PATH", "HANNDS_PATH",
