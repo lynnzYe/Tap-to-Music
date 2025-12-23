@@ -11,8 +11,8 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 from ttm.config import model_config, MIN_PIANO_PITCH, dotenv_config
-from ttm.data_preparation.utils import midi_to_tap, get_note_sequence_from_midi, ChordConstants
 from ttm.data_preparation.feature_preparation import ChordFeatureExtractor
+from ttm.data_preparation.utils import midi_to_tap, get_note_sequence_from_midi, ChordConstants
 from ttm.model.chord_model import ChordTapLSTM
 from ttm.model.uc_model import UCTapLSTM
 from ttm.module.uc_module import parse_model_config
@@ -22,6 +22,7 @@ from ttm.utils import note_seq_to_midi, clog
 def infer_taps(midi_path, model, device, temperature=1.0):
     ns = get_note_sequence_from_midi(midi_path)
     taps, _ = midi_to_tap(ns)
+    taps[:, 0] -= MIN_PIANO_PITCH
     taps[0, 0] = 88
     taps = torch.tensor(taps, device=device)
     prev_pitch = -1
@@ -42,6 +43,7 @@ def infer_taps(midi_path, model, device, temperature=1.0):
 
     mid = note_seq_to_midi(ns[1:, :])
     return mid
+
 
 def infer_taps_chord(midi_path, chord_annot_path, model, device, temperature=1.0):
     ns = get_note_sequence_from_midi(midi_path)
@@ -79,6 +81,7 @@ def infer_taps_chord(midi_path, chord_annot_path, model, device, temperature=1.0
     ns[:, 0] = np.array(predicted_pitches) + MIN_PIANO_PITCH
     mid = note_seq_to_midi(ns[1:, :])
     return mid
+
 
 def get_state_dict(args):
     checkpoint = torch.load(args.model_state_dict_path, map_location=torch.device(args.device))
@@ -158,7 +161,6 @@ def debug_main():
     args.temperature = 1.1
     args.output_dir = dotenv_config['OUTPUT_DIR']
     syn_taps(args)
-
 
 
 if __name__ == "__main__":

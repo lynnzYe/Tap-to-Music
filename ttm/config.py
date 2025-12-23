@@ -13,7 +13,7 @@ load_dotenv(os.path.join(Path(__file__).resolve().parent, ".env"))
 dotenv_config = {key: os.getenv(key) for key in [
     "FEATURE_FOLDER", "FEATURE_TYPE", "SPLIT", "DATA_DIR", "TRAIN_NAME", "OUTPUT_DIR",
     "DEBUG_DIR", "CKPT_PATH", "MAESTRO_PATH", "ASAP_PATH", "POP909_PATH", "HANNDS_PATH",
-    "CHORD_ANNOT_PATH"
+    "CHORD_ANNOT_PATH", "MIDI_PATH"
 ]}
 
 warnings.filterwarnings("ignore", category=UserWarning, module='pkg_resources')
